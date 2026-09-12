@@ -2,20 +2,20 @@ use pyo3::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().nth(1).as_deref() == Some("--print-home") {
-        println!("{}", pybundle::BUILD_PYTHON_HOME);
+        println!("{}", pylink::BUILD_PYTHON_HOME);
         return Ok(());
     }
 
     // Initialize before the first PyO3 call; do not enable auto-initialize.
-    pybundle::initialize()?;
+    pylink::initialize()?;
     Python::attach(|py| -> PyResult<()> {
         let sys = py.import("sys")?;
         let version: String = sys.getattr("version")?.extract()?;
-        assert!(version.starts_with(pybundle::PYTHON_VERSION));
+        assert!(version.starts_with(pylink::PYTHON_VERSION));
         let prefix: String = sys.getattr("prefix")?.extract()?;
         assert_eq!(
             std::fs::canonicalize(prefix).expect("Python prefix exists"),
-            pybundle::runtime_home().expect("selected Python home")
+            pylink::runtime_home().expect("selected Python home")
         );
 
         let value: u32 = py.eval(c"sum(range(10))", None, None)?.extract()?;
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialization must release the GIL so another Rust thread can attach.
     std::thread::spawn(|| {
-        pybundle::initialize().expect("repeat initialization from a second thread");
+        pylink::initialize().expect("repeat initialization from a second thread");
         Python::attach(|py| {
             let result: u32 = py.eval(c"6 * 7", None, None).unwrap().extract().unwrap();
             assert_eq!(result, 42);

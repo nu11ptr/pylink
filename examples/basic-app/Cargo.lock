@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "pybundle"
+name = "pylink"
 version = "0.1.0"
 
 [[package]]
-name = "pybundle-basic-example"
+name = "pylink-basic-example"
 version = "0.1.0"
 dependencies = [
- "pybundle",
+ "pylink",
 ]

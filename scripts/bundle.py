@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package a native pybundle application and its matching Python distribution.
+"""Package a native pylink application and its matching Python distribution.
 
 Run on the application's target OS. Python is needed only to run this helper,
 not on the machine running the resulting application. No third-party modules.
@@ -22,14 +22,14 @@ def bundle(binary: Path, home: Path, output: Path) -> None:
         raise ValueError(f"output already exists: {output}; choose a new directory")
     if binary.name in {"python", "bin"} or any(c in binary.name for c in "\n\r"):
         raise ValueError("binary name cannot be 'python', 'bin', or contain newlines")
-    if not binary.is_file() or not (home / ".pybundle-version").is_file():
-        raise ValueError("provide an application binary and a Python home prepared by pybundle")
+    if not binary.is_file() or not (home / ".pylink-version").is_file():
+        raise ValueError("provide an application binary and a Python home prepared by pylink")
     if home in output.parents:
         raise ValueError("output cannot be inside the source Python distribution")
-    version = (home / ".pybundle-version").read_text().strip()
+    version = (home / ".pylink-version").read_text().strip()
     minor = ".".join(version.split(".")[:2])
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".pybundle-", dir=output.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=".pylink-", dir=output.parent) as temporary:
         stage = Path(temporary) / "bundle"
         stage.mkdir()
         # Preserve upstream libraries, stdlib, resources and licenses together.
@@ -43,7 +43,7 @@ def bundle(binary: Path, home: Path, output: Path) -> None:
                 '#!/bin/sh\n'
                 'set -eu\n'
                 'bundle=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)\n'
-                'export PYBUNDLE_PYTHON_HOME="$bundle/python"\n'
+                'export PYLINK_PYTHON_HOME="$bundle/python"\n'
                 'export LD_LIBRARY_PATH="$bundle/python/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n'
                 'exec "$bundle/bin/"' + shlex.quote(binary.name) + ' "$@"\n'
             )
@@ -79,7 +79,7 @@ def main():
     try:
         bundle(args.binary, args.python_home, args.output)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        parser.exit(1, f"pybundle packaging failed: {error}\n")
+        parser.exit(1, f"pylink packaging failed: {error}\n")
 
 
 if __name__ == "__main__":

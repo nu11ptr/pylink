@@ -52,19 +52,19 @@ def hidden_directories(paths):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="pybundle-smoke-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="pylink-smoke-") as temporary:
         work = Path(temporary)
         target = work / "target"
         offline_target = work / "offline-target"
-        cache = Path(os.environ.get("PYBUNDLE_CACHE_DIR", work / "cache")).resolve()
+        cache = Path(os.environ.get("PYLINK_CACHE_DIR", work / "cache")).resolve()
         env = {
             key: value
             for key, value in os.environ.items()
-            if not key.startswith(("PYO3_", "PYTHON", "PYBUNDLE_"))
+            if not key.startswith(("PYO3_", "PYTHON", "PYLINK_"))
         }
         env.update(
             CARGO_TARGET_DIR=str(target),
-            PYBUNDLE_CACHE_DIR=str(cache),
+            PYLINK_CACHE_DIR=str(cache),
             PYO3_PYTHON=str(work / "there-is-no-system-python"),
         )
         if os.name == "nt":
@@ -72,9 +72,9 @@ def main():
             # runner's PowerShell 7 module paths can break Get-FileHash when
             # inherited by Windows PowerShell through Python and Cargo.
             env["PSMODULEPATH"] = str(work / "there-are-no-powershell-modules")
-        selected_version = os.environ.get("PYBUNDLE_PYTHON_VERSION")
+        selected_version = os.environ.get("PYLINK_PYTHON_VERSION")
         if selected_version:
-            env["PYBUNDLE_PYTHON_VERSION"] = selected_version
+            env["PYLINK_PYTHON_VERSION"] = selected_version
 
         # Cargo/rustc do not need these to link Rust binaries, but cc and other
         # C/C++ build helpers honor them. Fresh target directories ensure that
@@ -104,12 +104,12 @@ def main():
             )
         )
         package = next(
-            package for package in metadata["packages"] if package["name"] == "pybundle"
+            package for package in metadata["packages"] if package["name"] == "pylink"
         )
         assert not package["dependencies"], package["dependencies"]
 
         run(["cargo", "test", "--locked", "--all-targets"], env=env)
-        # Test an independent binary crate whose only dependency is pybundle.
+        # Test an independent binary crate whose only dependency is pylink.
         run(["cargo", "run", "--locked"], cwd=BASIC_FIXTURE, env=env)
         run(["cargo", "run", "--locked", "--release"], cwd=BASIC_FIXTURE, env=env)
         python_home = Path(
@@ -125,7 +125,7 @@ def main():
         # Match the selected interpreter, including future catalog additions.
         # Environment settings take priority over the fixture's portable
         # .cargo configuration.
-        minor = (python_home / ".pybundle-version").read_text().strip().rsplit(".", 1)[0]
+        minor = (python_home / ".pylink-version").read_text().strip().rsplit(".", 1)[0]
         pyo3_config = work / "pyo3-config.txt"
         pyo3_config.write_text(
             "implementation=CPython\n"
@@ -137,13 +137,13 @@ def main():
         run(["cargo", "run", "--locked", "--release"], cwd=PYO3_FIXTURE, env=pyo3_env)
 
         # A fresh target directory forces the build script to run again. Both
-        # Cargo and pybundle must satisfy this build from their existing caches.
-        offline_env = dict(env, CARGO_TARGET_DIR=str(offline_target), PYBUNDLE_OFFLINE="1")
+        # Cargo and pylink must satisfy this build from their existing caches.
+        offline_env = dict(env, CARGO_TARGET_DIR=str(offline_target), PYLINK_OFFLINE="1")
         run(["cargo", "run", "--locked", "--offline"], cwd=BASIC_FIXTURE, env=offline_env)
 
         binaries = [
-            target / "release" / f"pybundle-basic-example{SUFFIX}",
-            target / "release" / f"pybundle-pyo3-example{SUFFIX}",
+            target / "release" / f"pylink-basic-example{SUFFIX}",
+            target / "release" / f"pylink-pyo3-example{SUFFIX}",
         ]
         bundles = []
         for binary in binaries:

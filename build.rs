@@ -4,7 +4,7 @@ use std::{env, path::PathBuf};
 
 fn main() {
     if let Err(error) = build() {
-        panic!("pybundle: {error}");
+        panic!("pylink: {error}");
     }
 }
 
@@ -17,11 +17,11 @@ fn build() -> build_support::Result<()> {
         println!("cargo:rerun-if-changed={file}");
     }
     for name in [
-        "PYBUNDLE_PYTHON_VERSION",
-        "PYBUNDLE_VERSION_FILE",
-        "PYBUNDLE_CACHE_DIR",
-        "PYBUNDLE_OFFLINE",
-        "PYBUNDLE_LINK_MODE",
+        "PYLINK_PYTHON_VERSION",
+        "PYLINK_VERSION_FILE",
+        "PYLINK_CACHE_DIR",
+        "PYLINK_OFFLINE",
+        "PYLINK_LINK_MODE",
         "CARGO_NET_OFFLINE",
         "HOME",
         "LOCALAPPDATA",
@@ -29,15 +29,15 @@ fn build() -> build_support::Result<()> {
     ] {
         println!("cargo:rerun-if-env-changed={name}");
     }
-    if env::var("PYBUNDLE_LINK_MODE").unwrap_or_else(|_| "dynamic".into()) != "dynamic" {
-        return Err("only PYBUNDLE_LINK_MODE=dynamic is supported; Astral's install_only_stripped distributions do not contain a static libpython".into());
+    if env::var("PYLINK_LINK_MODE").unwrap_or_else(|_| "dynamic".into()) != "dynamic" {
+        return Err("only PYLINK_LINK_MODE=dynamic is supported; Astral's install_only_stripped distributions do not contain a static libpython".into());
     }
     let target = env::var("TARGET").map_err(|e| e.to_string())?;
     let version = build_support::requested_version()?;
     let distribution = build_support::Distribution::select(&version, &target)?;
     let cache = build_support::cache_dir()?;
     let offline =
-        build_support::flag("PYBUNDLE_OFFLINE")? || build_support::flag("CARGO_NET_OFFLINE")?;
+        build_support::flag("PYLINK_OFFLINE")? || build_support::flag("CARGO_NET_OFFLINE")?;
     let home = build_support::prepare(&distribution, &cache, offline)?;
     let out = PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR is unset")?);
     let native = out.join("native");
@@ -45,13 +45,13 @@ fn build() -> build_support::Result<()> {
 
     println!("cargo:rustc-link-search=native={}", native.display());
     println!("cargo:rustc-link-lib=dylib={}", distribution.lib_name());
-    println!("cargo:rustc-env=PYBUNDLE_PYTHON_HOME={}", home.display());
+    println!("cargo:rustc-env=PYLINK_PYTHON_HOME={}", home.display());
     println!(
-        "cargo:rustc-env=PYBUNDLE_PYTHON_VERSION={}",
+        "cargo:rustc-env=PYLINK_PYTHON_VERSION={}",
         distribution.version
     );
     println!(
-        "cargo:rustc-env=PYBUNDLE_PYTHON_RELEASE={}",
+        "cargo:rustc-env=PYLINK_PYTHON_RELEASE={}",
         distribution.release
     );
     let config = home
@@ -61,7 +61,7 @@ fn build() -> build_support::Result<()> {
         .unwrap()
         .join("pyo3-config.txt");
     println!(
-        "cargo:rustc-env=PYBUNDLE_PYO3_CONFIG_FILE={}",
+        "cargo:rustc-env=PYLINK_PYO3_CONFIG_FILE={}",
         config.display()
     );
     println!("cargo:python_home={}", home.display());
@@ -73,7 +73,7 @@ fn build() -> build_support::Result<()> {
         home.parent().unwrap().join(".complete").display()
     );
     for file in [
-        home.join(".pybundle-version"),
+        home.join(".pylink-version"),
         home.parent().unwrap().join(".critical-hashes"),
         home.parent()
             .unwrap()

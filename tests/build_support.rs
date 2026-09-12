@@ -36,7 +36,7 @@ impl CachedArchive {
 
     fn for_target(target: &str) -> Self {
         let directory = std::env::temp_dir().join(format!(
-            "pybundle offline fixture {}-{}",
+            "pylink offline fixture {}-{}",
             std::process::id(),
             NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
         ));
@@ -195,7 +195,7 @@ fn incorrect_version_header_and_missing_completion_marker_are_repaired() {
 fn incorrect_and_missing_bundled_version_marker_are_repaired() {
     let fixture = CachedArchive::new();
     let home = fixture.prepare();
-    let marker = home.join(".pybundle-version");
+    let marker = home.join(".pylink-version");
     fs::write(&marker, "3.0.0").unwrap();
     fixture.prepare();
     assert_eq!(

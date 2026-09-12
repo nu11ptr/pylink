@@ -21,14 +21,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
 
 [[package]]
-name = "pybundle"
+name = "pylink"
 version = "0.1.0"
 
 [[package]]
-name = "pybundle-pyo3-example"
+name = "pylink-pyo3-example"
 version = "0.1.0"
 dependencies = [
- "pybundle",
+ "pylink",
  "pyo3",
 ]
 

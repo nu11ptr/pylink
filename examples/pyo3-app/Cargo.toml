@@ -1,11 +1,11 @@
 [package]
-name = "pybundle-pyo3-example"
+name = "pylink-pyo3-example"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [dependencies]
-pybundle = { path = "../.." }
+pylink = { path = "../.." }
 pyo3 = { version = "0.29.2", default-features = false }
 
 # Keep this a real downstream application, independent of the library's tests.

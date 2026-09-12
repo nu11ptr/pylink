@@ -1,13 +1,13 @@
 [package]
-name = "pybundle"
+name = "pylink"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Download, link, and initialize a redistributable Python interpreter"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/nu11ptr/pybundle"
-links = "pybundle_python"
+repository = "https://github.com/nu11ptr/pylink"
+links = "pylink_python"
 include = ["src/**", "build.rs", "build_support/**", "examples/basic.rs", "scripts/bundle.py", "README.md", "LICENSE"]
 
 [dependencies]

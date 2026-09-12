@@ -6,8 +6,8 @@
 //! Initialization leaves the GIL released so PyO3 can attach Rust threads.
 //!
 //! ```no_run
-//! fn main() -> Result<(), pybundle::Error> {
-//!     pybundle::initialize()?;
+//! fn main() -> Result<(), pylink::Error> {
+//!     pylink::initialize()?;
 //!     // Now use pyo3::Python::attach(...), or another Python C API wrapper.
 //!     Ok(())
 //! }
@@ -29,30 +29,30 @@ use std::ptr::NonNull;
 use std::sync::OnceLock;
 
 /// The exact CPython version selected at build time.
-pub const PYTHON_VERSION: &str = env!("PYBUNDLE_PYTHON_VERSION");
+pub const PYTHON_VERSION: &str = env!("PYLINK_PYTHON_VERSION");
 
 /// The pinned Astral python-build-standalone release tag selected at build time.
-pub const PYTHON_RELEASE: &str = env!("PYBUNDLE_PYTHON_RELEASE");
+pub const PYTHON_RELEASE: &str = env!("PYLINK_PYTHON_RELEASE");
 
 /// The generated PyO3 configuration file on the build machine.
 ///
-/// For a two-phase build, first build a small program depending on `pybundle`
+/// For a two-phase build, first build a small program depending on `pylink`
 /// and have it print this path. Then set the `PYO3_CONFIG_FILE` environment
 /// variable to that absolute path before invoking Cargo to build the PyO3
 /// application. The generated configuration selects this interpreter's version
-/// and leaves native linking to `pybundle`.
+/// and leaves native linking to `pylink`.
 ///
 /// A dependency's build script cannot configure a sibling dependency's build
 /// script in the same Cargo invocation. Alternatively, check a matching PyO3
 /// configuration into the application repository, as the PyO3 example does.
-pub const PYO3_CONFIG_FILE: &str = env!("PYBUNDLE_PYO3_CONFIG_FILE");
+pub const PYO3_CONFIG_FILE: &str = env!("PYLINK_PYO3_CONFIG_FILE");
 
 /// The downloaded interpreter's home on the build machine.
 ///
 /// This is a development fallback, not a path to use when distributing an app.
 /// Bundle its contents in a `python` directory beside the executable, or use
 /// `Contents/Resources/python` in a macOS application bundle.
-pub const BUILD_PYTHON_HOME: &str = env!("PYBUNDLE_PYTHON_HOME");
+pub const BUILD_PYTHON_HOME: &str = env!("PYLINK_PYTHON_HOME");
 
 static INITIALIZATION: OnceLock<Result<PathBuf, Error>> = OnceLock::new();
 
@@ -126,7 +126,7 @@ impl std::error::Error for Error {}
 ///
 /// Before initialization, the search order is:
 ///
-/// 1. The runtime `PYBUNDLE_PYTHON_HOME` environment variable.
+/// 1. The runtime `PYLINK_PYTHON_HOME` environment variable.
 /// 2. A `python` directory beside the executable.
 /// 3. `../Resources/python` for a macOS `Contents/MacOS` executable.
 /// 4. [`BUILD_PYTHON_HOME`], the build machine's downloaded interpreter.
@@ -138,7 +138,7 @@ pub fn runtime_home() -> Result<PathBuf, Error> {
         return result.clone();
     }
     let executable = current_executable()?;
-    let override_home = std::env::var_os("PYBUNDLE_PYTHON_HOME").map(PathBuf::from);
+    let override_home = std::env::var_os("PYLINK_PYTHON_HOME").map(PathBuf::from);
     resolve_home(override_home, &executable, Path::new(BUILD_PYTHON_HOME))
 }
 
@@ -169,7 +169,7 @@ pub fn initialize() -> Result<(), Error> {
 /// conversion on Windows). Non-UTF-8 Unix paths and Windows paths containing
 /// unpaired surrogates return [`Error::NonUnicodePath`].
 ///
-/// Homes prepared by this crate contain a `.pybundle-version` file, which must
+/// Homes prepared by this crate contain a `.pylink-version` file, which must
 /// match [`PYTHON_VERSION`] exactly. Manually prepared homes without this marker
 /// are accepted; the caller must ensure their standard library and native
 /// extensions match the linked interpreter's version.
@@ -252,14 +252,14 @@ fn validate_home(home: &Path) -> Result<PathBuf, Error> {
     })?;
     // A Unicode symlink can resolve to a non-Unicode target on Unix.
     let _ = utf8_path(&resolved)?;
-    let version_marker = resolved.join(".pybundle-version");
+    let version_marker = resolved.join(".pylink-version");
     match std::fs::read_to_string(&version_marker) {
         Ok(version) if version.trim() == PYTHON_VERSION => {}
         Ok(version) => {
             return Err(Error::InvalidHome {
                 path: resolved,
                 reason: format!(
-                    ".pybundle-version specifies Python {:?}; expected {PYTHON_VERSION}",
+                    ".pylink-version specifies Python {:?}; expected {PYTHON_VERSION}",
                     version.trim()
                 ),
             });
@@ -270,7 +270,7 @@ fn validate_home(home: &Path) -> Result<PathBuf, Error> {
         Err(error) => {
             return Err(Error::InvalidHome {
                 path: resolved,
-                reason: format!("cannot read .pybundle-version: {error}"),
+                reason: format!("cannot read .pylink-version: {error}"),
             });
         }
     }
@@ -296,8 +296,7 @@ fn initialize_interpreter(home: &CStr, executable: &CStr) -> Result<(), Error> {
     unsafe {
         if ffi::Py_IsInitialized() != 0 {
             return Err(Error::Initialization(
-                "CPython was initialized outside pybundle; call pybundle::initialize() first"
-                    .into(),
+                "CPython was initialized outside pylink; call pylink::initialize() first".into(),
             ));
         }
         let loaded = CStr::from_ptr(ffi::Py_GetVersion()).to_bytes();
@@ -397,7 +396,7 @@ mod tests {
     impl TempDir {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "pybundle-runtime-{}-{}",
+                "pylink-runtime-{}-{}",
                 std::process::id(),
                 NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
             ));
@@ -463,7 +462,7 @@ mod tests {
     fn version_marker_must_match_the_exact_selected_version() {
         let temp = TempDir::new();
         let home = temp.python_home("python");
-        let marker = home.join(".pybundle-version");
+        let marker = home.join(".pylink-version");
         // A manually prepared home without a marker remains supported.
         assert_eq!(validate_home(&home).unwrap(), home);
         std::fs::write(&marker, format!("{PYTHON_VERSION}\n")).unwrap();

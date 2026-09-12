@@ -31,7 +31,7 @@ TARGETS = (
 
 
 def fetch(url):
-    request = Request(url, headers={"User-Agent": "pybundle-manifest-maintainer"})
+    request = Request(url, headers={"User-Agent": "pylink-manifest-maintainer"})
     with urlopen(request, timeout=60) as response:
         return response.read()
 
@@ -106,7 +106,7 @@ def main():
     if any(not re.fullmatch(r"3\.\d+\.\d+", version) for version in args.versions):
         parser.error("--versions must contain exact stable Python 3 versions, e.g. 3.14.7")
     if any(int(version.split(".")[1]) < 14 for version in args.versions):
-        parser.error("pybundle requires Python 3.14 or newer for the opaque PyInitConfig API")
+        parser.error("pylink requires Python 3.14 or newer for the opaque PyInitConfig API")
     if len(set(args.versions)) != len(args.versions):
         parser.error("--versions must not contain duplicates")
     try:

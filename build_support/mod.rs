@@ -35,7 +35,7 @@ impl Distribution {
         ) < (3, 14)
         {
             return Err(format!(
-                "Python {version} is unsupported: pybundle requires Python 3.14 or newer for the opaque PyInitConfig API; set PYBUNDLE_PYTHON_VERSION=3.14 or update your PYBUNDLE_VERSION_FILE"
+                "Python {version} is unsupported: pylink requires Python 3.14 or newer for the opaque PyInitConfig API; set PYLINK_PYTHON_VERSION=3.14 or update your PYLINK_VERSION_FILE"
             ));
         }
         let mut available = Vec::new();
@@ -66,7 +66,7 @@ impl Distribution {
             ))
         } else {
             Err(format!(
-                "Python {version} is not in this crate's pinned catalog; available patch versions for {target}: {}. Choose a listed version or update pybundle for a newer catalog",
+                "Python {version} is not in this crate's pinned catalog; available patch versions for {target}: {}. Choose a listed version or update pylink for a newer catalog",
                 available.join(", ")
             ))
         }
@@ -192,14 +192,14 @@ pub fn absolute_path(path: PathBuf, setting: &str) -> Result<PathBuf> {
 }
 
 pub fn requested_version() -> Result<String> {
-    let selected = env::var("PYBUNDLE_PYTHON_VERSION").map_err(|e| e.to_string());
+    let selected = env::var("PYLINK_PYTHON_VERSION").map_err(|e| e.to_string());
     // Track the file even while overridden, so switching back sees its current content.
-    let file = env::var_os("PYBUNDLE_VERSION_FILE").map(PathBuf::from);
+    let file = env::var_os("PYLINK_VERSION_FILE").map(PathBuf::from);
     if let Some(ref file) = file {
-        let file = absolute_path(file.clone(), "PYBUNDLE_VERSION_FILE")?;
+        let file = absolute_path(file.clone(), "PYLINK_VERSION_FILE")?;
         println!("cargo:rerun-if-changed={}", file.display());
     }
-    if env::var_os("PYBUNDLE_PYTHON_VERSION").is_some() {
+    if env::var_os("PYLINK_PYTHON_VERSION").is_some() {
         return selected;
     }
     match file {
@@ -211,24 +211,24 @@ pub fn requested_version() -> Result<String> {
 }
 
 pub fn cache_dir() -> Result<PathBuf> {
-    if let Some(path) = env::var_os("PYBUNDLE_CACHE_DIR") {
-        return absolute_path(PathBuf::from(path), "PYBUNDLE_CACHE_DIR");
+    if let Some(path) = env::var_os("PYLINK_CACHE_DIR") {
+        return absolute_path(PathBuf::from(path), "PYLINK_CACHE_DIR");
     }
     let base = if cfg!(windows) {
         PathBuf::from(
-            env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unset; set PYBUNDLE_CACHE_DIR")?,
+            env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unset; set PYLINK_CACHE_DIR")?,
         )
-        .join("pybundle")
+        .join("pylink")
         .join("Cache")
     } else if cfg!(target_os = "macos") {
-        PathBuf::from(env::var_os("HOME").ok_or("HOME is unset; set PYBUNDLE_CACHE_DIR")?)
-            .join("Library/Caches/pybundle")
+        PathBuf::from(env::var_os("HOME").ok_or("HOME is unset; set PYLINK_CACHE_DIR")?)
+            .join("Library/Caches/pylink")
     } else if let Some(path) = env::var_os("XDG_CACHE_HOME").filter(|p| Path::new(p).is_absolute())
     {
-        PathBuf::from(path).join("pybundle")
+        PathBuf::from(path).join("pylink")
     } else {
-        PathBuf::from(env::var_os("HOME").ok_or("HOME is unset; set PYBUNDLE_CACHE_DIR")?)
-            .join(".cache/pybundle")
+        PathBuf::from(env::var_os("HOME").ok_or("HOME is unset; set PYLINK_CACHE_DIR")?)
+            .join(".cache/pylink")
     };
     absolute_path(base, "platform cache directory")
 }
@@ -269,7 +269,7 @@ pub fn checksum(path: &Path) -> Result<String> {
 $ErrorActionPreference = 'Stop'
 $hasher = [System.Security.Cryptography.SHA256]::Create()
 try {
-    $stream = [System.IO.File]::OpenRead($env:PYBUNDLE_HASH_FILE)
+    $stream = [System.IO.File]::OpenRead($env:PYLINK_HASH_FILE)
     try {
         [System.BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '')
     } finally {
@@ -280,7 +280,7 @@ try {
 }
 "#,
             ])
-            .env("PYBUNDLE_HASH_FILE", path))?
+            .env("PYLINK_HASH_FILE", path))?
     } else if cfg!(target_os = "macos") {
         run(Command::new("shasum").args(["-a", "256"]).arg(path))?
     } else {
@@ -342,7 +342,7 @@ pub fn prepare(distribution: &Distribution, cache: &Path, offline: bool) -> Resu
         }
         let partial = entry.join("download.part");
         let _ = fs::remove_file(&partial);
-        eprintln!("pybundle: downloading {}", distribution.url());
+        eprintln!("pylink: downloading {}", distribution.url());
         run(
             Command::new(if cfg!(windows) { "curl.exe" } else { "curl" })
                 .args([
@@ -385,7 +385,7 @@ pub fn prepare(distribution: &Distribution, cache: &Path, offline: bool) -> Resu
     if !valid_archive
         || fs::read_to_string(&marker).ok().as_deref() != Some(distribution.sha256)
         || distribution.validate_home(&home).is_err()
-        || fs::read_to_string(home.join(".pybundle-version"))
+        || fs::read_to_string(home.join(".pylink-version"))
             .ok()
             .as_deref()
             != Some(distribution.version)
@@ -407,11 +407,7 @@ pub fn prepare(distribution: &Distribution, cache: &Path, offline: bool) -> Resu
             .arg("-C")
             .arg(&unpack))?;
         distribution.validate_home(&unpack.join("python"))?;
-        fs::write(
-            unpack.join("python/.pybundle-version"),
-            distribution.version,
-        )
-        .map_err(io_error)?;
+        fs::write(unpack.join("python/.pylink-version"), distribution.version).map_err(io_error)?;
         fs::write(unpack.join(".complete"), distribution.sha256).map_err(io_error)?;
         fs::write(
             unpack.join(".critical-hashes"),
@@ -488,7 +484,7 @@ mod tests {
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     fn temp() -> PathBuf {
         let path = env::temp_dir().join(format!(
-            "pybundle-test-{}-{}",
+            "pylink-test-{}-{}",
             std::process::id(),
             COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
@@ -543,7 +539,7 @@ mod tests {
             let error = Distribution::select(version, "aarch64-apple-darwin").unwrap_err();
             assert!(error.contains("requires Python 3.14 or newer"), "{error}");
             assert!(error.contains("PyInitConfig"), "{error}");
-            assert!(error.contains("PYBUNDLE_PYTHON_VERSION=3.14"), "{error}");
+            assert!(error.contains("PYLINK_PYTHON_VERSION=3.14"), "{error}");
         }
     }
     #[test]
