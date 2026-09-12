@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 25
     env:
       CARGO_TERM_COLOR: always
-      PYBUNDLE_CACHE_DIR: ${{ runner.temp }}/pybundle-cache
       PYBUNDLE_PYTHON_VERSION: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v7
@@ -34,7 +33,7 @@ jobs:
           python-version: '3.14'
       - uses: actions/cache@v6
         with:
-          path: ${{ env.PYBUNDLE_CACHE_DIR }}
+          path: ${{ runner.temp }}/pybundle-cache
           key: pybundle-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python }}-${{ hashFiles('build_support/distributions.tsv') }}
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -45,4 +44,6 @@ jobs:
         working-directory: examples/pyo3-app
         run: cargo fmt -- --check
       - name: Build without a C compiler, initialize, reuse cache offline, and relocate
+        env:
+          PYBUNDLE_CACHE_DIR: ${{ runner.temp }}/pybundle-cache
         run: python scripts/smoke.py
