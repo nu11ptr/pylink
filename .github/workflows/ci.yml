@@ -50,3 +50,35 @@ jobs:
         env:
           PYLINK_CACHE_DIR: ${{ runner.temp }}/pylink-cache
         run: python scripts/smoke.py
+
+  package:
+    name: Package and MSRV (Rust 1.89)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/pylink-cache
+          key: pylink-${{ runner.os }}-${{ runner.arch }}-3.14-${{ hashFiles('build_support/distributions.tsv') }}
+      - name: Test minimum supported Rust
+        env:
+          PYLINK_CACHE_DIR: ${{ runner.temp }}/pylink-cache
+        run: |
+          cargo test --locked --all-targets
+          cargo test --locked --doc
+      - name: Verify crate package
+        env:
+          PYLINK_CACHE_DIR: ${{ runner.temp }}/pylink-cache
+        run: cargo package --locked
+      - name: Build docs.rs documentation without downloading Python
+        env:
+          DOCS_RS: "1"
+          CARGO_TARGET_DIR: ${{ runner.temp }}/pylink-docs-target
+          PYLINK_CACHE_DIR: ${{ runner.temp }}/pylink-docs-cache
+          PYLINK_OFFLINE: "1"
+          RUSTDOCFLAGS: "-D warnings"
+        run: |
+          cargo doc --locked --no-deps
+          test ! -e "$PYLINK_CACHE_DIR"

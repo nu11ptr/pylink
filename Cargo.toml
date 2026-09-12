@@ -4,10 +4,26 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Download, link, and initialize a redistributable Python interpreter"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/nu11ptr/pylink"
+documentation = "https://docs.rs/pylink"
+keywords = ["python", "cpython", "embedding", "pyo3", "ffi"]
+categories = ["development-tools::ffi"]
 links = "pylink_python"
-include = ["src/**", "build.rs", "build_support/**", "examples/hello.rs", "scripts/bundle.py", "/README.md", "LICENSE"]
+include = [
+    "/src/**",
+    "/build.rs",
+    "/build_support/**",
+    "/examples/hello.rs",
+    "/tests/*.rs",
+    "/scripts/bundle.py",
+    "/README.md",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]

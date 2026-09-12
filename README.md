@@ -1,5 +1,9 @@
 # pylink
 
+[![crates.io](https://img.shields.io/crates/v/pylink.svg)](https://crates.io/crates/pylink)
+[![docs.rs](https://docs.rs/pylink/badge.svg)](https://docs.rs/pylink)
+[![CI](https://github.com/nu11ptr/pylink/actions/workflows/ci.yml/badge.svg)](https://github.com/nu11ptr/pylink/actions/workflows/ci.yml)
+
 Download, cache, link, and initialize CPython in a Rust application.
 
 - Uses Astral's stripped [standalone Python builds](https://github.com/astral-sh/python-build-standalone).
@@ -19,17 +23,17 @@ fn main() -> Result<(), pylink::Error> {
 }
 ```
 
-Until published, use a path or Git dependency.
-
 ## Examples
 
-- [Rust hello](examples/hello.rs): initialize Python and print a Rust greeting.
+Run these from a repository checkout:
+
+- [Rust hello](https://github.com/nu11ptr/pylink/blob/main/examples/hello.rs): initialize Python and print a Rust greeting.
 
   ```sh
   cargo run --example hello
   ```
 
-- [PyO3 hello](examples/hello-pyo3): evaluate a greeting in Python.
+- [PyO3 hello](https://github.com/nu11ptr/pylink/tree/main/examples/hello-pyo3): evaluate a greeting in Python.
 
   ```sh
   cd examples/hello-pyo3
@@ -139,7 +143,7 @@ Build information:
 
 ## PyO3
 
-See the complete [hello-world example](examples/hello-pyo3).
+See the complete [hello-world example](https://github.com/nu11ptr/pylink/tree/main/examples/hello-pyo3).
 
 ```toml
 [dependencies]
@@ -191,7 +195,7 @@ More: [PyO3 build configuration](https://pyo3.rs/v0.29.2/building-and-distributi
 - Use the **same target and Python version** as the binary.
 - Your users do not need Python installed.
 
-Package on the target OS with [scripts/bundle.py](scripts/bundle.py):
+Package on the target OS with [scripts/bundle.py](https://github.com/nu11ptr/pylink/blob/main/scripts/bundle.py):
 
 ```sh
 python3 scripts/bundle.py --binary /path/to/myapp \
@@ -265,18 +269,21 @@ myapp/
 
 ## Tests and maintenance
 
+From a repository checkout:
+
 ```sh
 cargo test --all-targets
 cargo test --doc
 python3 scripts/smoke.py
 ```
 
-- Runs both hello examples and the dedicated [test applications](tests/fixtures).
+- Runs both hello examples and the dedicated [test applications](https://github.com/nu11ptr/pylink/tree/main/tests/fixtures).
 - Checks initialization, native module imports, threading, cache integrity, and offline builds.
 - Tests builds with C/C++ compiler and system-Python discovery disabled.
 - Runs packaged binaries with the original cache/build directories hidden and a minimal environment.
 - Exercises bundle paths containing spaces and Unicode.
-- [GitHub Actions](.github/workflows/ci.yml) runs the suite on Windows, Linux, and macOS.
+- CI also checks Rust 1.89, crate packaging, and documentation without Python downloads.
+- [GitHub Actions](https://github.com/nu11ptr/pylink/blob/main/.github/workflows/ci.yml) runs the suite on Windows, Linux, and macOS.
 
 Update the pinned catalog:
 
@@ -286,3 +293,9 @@ python3 scripts/update_manifest.py --release 20260901 \
 ```
 
 For a new Python minor, also update the default, PyO3 configs, examples, docs, and CI.
+
+## License
+
+[MIT](https://github.com/nu11ptr/pylink/blob/main/LICENSE-MIT) OR
+[Apache-2.0](https://github.com/nu11ptr/pylink/blob/main/LICENSE-APACHE), at your option.
+Python and its bundled dependencies retain their own licenses.

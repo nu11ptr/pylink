@@ -1,6 +1,6 @@
 //! Python 3.14+ initialization through an opaque, Python-owned configuration.
 //! No Python structure layout is reproduced or accessed from Rust.
-//! https://docs.python.org/3.14/c-api/init_config.html#pyinitconfig-c-api
+//! <https://docs.python.org/3.14/c-api/init_config.html#pyinitconfig-c-api>
 
 use std::ffi::{c_char, c_int, c_void};
 
