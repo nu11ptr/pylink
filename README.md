@@ -23,38 +23,45 @@ assumes publication. For now use a local path or this Git repository.
 
 ## Build requirements and supported targets
 
-Rust **1.89+**, a C compiler, `curl`, `tar`, and the platform's SHA-256 utility.
-The Rust library has **zero runtime dependencies**. Its only build dependency is
-`cc`, with two transitive dependencies (`shlex` and `find-msvc-tools`), to compile
-a small C shim against the downloaded Python headers. The shim keeps Python's
-version-dependent initialization structures out of Rust.
+Rust **1.89+** with its normal native linker/SDK, `curl`, `tar`, and the
+platform's SHA-256 utility. pybundle has **zero Cargo dependencies**, including
+build dependencies, and compiles no C or C++ source.
+
+Rust calls Python 3.14+'s opaque
+[`PyInitConfig` API](https://docs.python.org/3.14/c-api/init_config.html#pyinitconfig-c-api)
+directly through the C ABI. Python allocates and manages the configuration;
+pybundle sets options through functions without duplicating Python's struct
+layouts. No `bindgen`, `libclang`, or C compiler is needed.
 
 | Target | Build prerequisites | Python's minimum OS |
 | --- | --- | --- |
 | `aarch64-apple-darwin` | Xcode Command Line Tools; macOS-provided curl, tar, shasum | macOS 11 |
 | `x86_64-apple-darwin` | Same | macOS 10.15 |
-| `x86_64-unknown-linux-gnu` | C compiler/linker, curl, tar with gzip, sha256sum | glibc 2.17 |
+| `x86_64-unknown-linux-gnu` | Normal Rust linker toolchain, curl, tar with gzip, sha256sum | glibc 2.17 |
 | `aarch64-unknown-linux-gnu` | Same | glibc 2.17 |
-| `x86_64-pc-windows-msvc` | Visual Studio C++ Build Tools, Windows SDK; Windows curl.exe, tar.exe, PowerShell | Windows 10 for Python 3.14 |
-| `aarch64-pc-windows-msvc` | Same, with ARM64 compiler components | Same |
+| `x86_64-pc-windows-msvc` | MSVC linker and Windows SDK (normal Rust setup); Windows curl.exe, tar.exe, PowerShell | Windows 10 for Python 3.14 |
+| `aarch64-pc-windows-msvc` | Same, with ARM64 linker/SDK components | Same |
 
-For Debian/Ubuntu, `apt-get install build-essential curl tar gzip coreutils`
-provides the native prerequisites. On macOS, use `xcode-select --install`.
+For Debian/Ubuntu, `apt-get install curl tar gzip coreutils` provides the download
+and extraction tools. Keep the linker setup you normally use for Rust binaries:
+the default GNU Rust toolchain commonly invokes `cc` as its linker driver, even
+when compiling only Rust. On macOS, `xcode-select --install` provides the usual
+linker and SDK. pybundle adds no C compilation requirement to that setup.
 Rust, third-party libraries, or your application may require newer OS versions
 than Python itself. See [upstream platform requirements](https://github.com/astral-sh/python-build-standalone/blob/20260901/docs/running.rst).
 
 Distribution selection uses Cargo's **TARGET**, never the build host. Native
-builds are the tested path. Cross-compilation also needs the target C compiler,
-linker and SDK configured through `cc`/Cargo; pybundle does not install those.
+builds are the tested path. Cross-compilation also needs the target linker and
+SDK configured through Cargo; pybundle does not install those.
 The CI matrix covers Linux x64, Windows x64, and macOS ARM64/x64. Linux and Windows
 ARM64 have pinned distributions but are not exercised in CI yet. musl, MinGW,
 32-bit, free-threaded Python, and static linking are not supported.
 
 ## Choosing Python
 
-The default is **Python 3.14.7**, from Astral release **20260901**. Each crate
-release pins its downloads and SHA-256 hashes; builds never query GitHub's
-"latest" endpoint. Updating pybundle updates the available interpreter catalog.
+Python **3.14+** is required. The default is **Python 3.14.7**, from Astral release
+**20260901**. Each crate release pins its downloads and SHA-256 hashes; builds
+never query GitHub's "latest" endpoint. Updating pybundle updates the available interpreter catalog.
 This makes builds reproducible and usable offline after the first download.
 
 Select a supported series or exact patch in your application's
@@ -62,14 +69,14 @@ Select a supported series or exact patch in your application's
 
 ```toml
 [env]
-PYBUNDLE_PYTHON_VERSION = "3.13"
+PYBUNDLE_PYTHON_VERSION = "3.14"
 ```
 
-The current catalog contains `3.12` / `3.12.14`, `3.13` / `3.13.15`, and
-`3.14` / `3.14.7` for every target above. Unknown versions fail with a diagnostic;
-they do not silently select a different patch or contact a mutable release URL.
+The current catalog contains `3.14` / `3.14.7` for every target above.
+Unsupported versions fail with a diagnostic; they do not silently select a
+different patch or contact a mutable release URL.
 
-Alternatively, keep a one-line `.python-version` file containing `3.13`, and
+Alternatively, keep a one-line `.python-version` file containing `3.14`, and
 explicitly tell Cargo where to find it:
 
 ```toml
@@ -100,8 +107,8 @@ Default cache locations:
 Each cache entry is keyed by exact Python version, Astral release, target, and
 full expected SHA-256. The original archive and extracted runtime are retained.
 Whenever the build script runs, it checks the archive hash, completion marker,
-required layout, exact header version, and hashes of the native library/import
-library, core headers, and encoding entry point. Missing or damaged extraction
+required layout, exact header version, and hashes of the native libraries,
+version header, and encoding entry point. Missing or damaged extraction
 is rebuilt from the verified cached archive. It does not hash every standard
 library file on each build; delete the entry if other extracted files are damaged.
 
@@ -147,6 +154,11 @@ with a cache or system interpreter. `initialize_from(path)` selects an explicit
 home; `runtime_home()` returns the selected directory. These select the standard
 library **after** the OS loads the executable. Shared library discovery must be
 configured before launch, as described below.
+
+The Python home and application executable paths must be valid Unicode because
+`PyInitConfig` accepts UTF-8 strings. Spaces and Unicode characters are supported.
+Non-UTF-8 paths on Unix and unpaired UTF-16 surrogates on Windows return an error
+instead of being converted lossily.
 
 `PYTHON_VERSION`, `PYTHON_RELEASE`, `BUILD_PYTHON_HOME`, and `PYO3_CONFIG_FILE`
 expose build-time information. The build script also supplies
@@ -319,20 +331,24 @@ real PyO3 consumer with system-interpreter discovery
 pointing at a nonexistent file; imports native modules including SSL, SQLite,
 ctypes and zlib; attaches another Rust thread; rebuilds in a fresh target
 directory offline; and runs both application bundles after moving the cache and
-build directories out of reach. Bundles have spaces in their paths and run with
-minimal environments. Unit/integration tests also exercise initialization
-errors, version/target selection, integrity, offline cache repair, and locking.
+build directories out of reach. Bundles have spaces and Unicode characters in
+their paths and run with minimal environments. Unit/integration tests also
+exercise initialization errors, version/target selection, integrity, offline
+cache repair, and locking.
 
-[GitHub Actions](.github/workflows/ci.yml) runs this workflow on Windows, Linux,
-and both macOS architectures. The workflow runs on push, pull request, and
-manual dispatch. Local verification on one OS does not substitute for those
-other runners.
+[GitHub Actions](.github/workflows/ci.yml) runs Python 3.14 on Windows,
+Linux, and both macOS architectures. Consumer tests set C/C++ compiler settings
+to nonexistent executables and build from fresh target directories. They also
+assert that pybundle has no Cargo dependencies. Runtime tests exercise the opaque
+initialization API directly; there are no copied configuration layouts to check.
+The workflow runs on push, pull request, and manual dispatch. Local verification
+on one OS does not substitute for those other runners.
 
 To update the pinned catalog deliberately:
 
 ```sh
 python3 scripts/update_manifest.py --release 20260901 \
-  --versions 3.12.14 3.13.15 3.14.7
+  --versions 3.14.7
 ```
 
 The updater cross-checks GitHub asset digests against the release's SHA256SUMS

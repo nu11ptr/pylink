@@ -40,6 +40,26 @@ fn incomplete_python_home(name: &str) -> std::path::PathBuf {
 #[test]
 fn initializes_isolated_python_and_releases_the_gil_for_other_threads() {
     let home = pybundle::runtime_home().unwrap();
+    assert!(matches!(
+        pybundle::initialize_from("bad\0path"),
+        Err(pybundle::Error::InvalidPath(_))
+    ));
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        assert!(matches!(
+            pybundle::initialize_from(std::ffi::OsStr::from_bytes(b"bad\xffpath")),
+            Err(pybundle::Error::NonUnicodePath(_))
+        ));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        assert!(matches!(
+            pybundle::initialize_from(std::ffi::OsString::from_wide(&[0xd800])),
+            Err(pybundle::Error::NonUnicodePath(_))
+        ));
+    }
     let missing = home.join("this-python-home-does-not-exist");
     assert!(matches!(
         pybundle::initialize_from(missing),
@@ -61,6 +81,8 @@ fn initializes_isolated_python_and_releases_the_gil_for_other_threads() {
          assert sys.flags.isolated == 1\n\
          assert sys.flags.ignore_environment == 1\n\
          assert sys.flags.no_user_site == 1\n\
+         assert sys.flags.safe_path\n\
+         assert sys.flags.utf8_mode == 1\n\
          assert sys.dont_write_bytecode\n\
          assert json.loads('{{\"answer\": 42}}')['answer'] == 42\n\
          assert sqlite3.connect(':memory:').execute('select 42').fetchone()[0] == 42\n\
@@ -83,11 +105,51 @@ fn initializes_isolated_python_and_releases_the_gil_for_other_threads() {
 }
 
 #[test]
+fn initialization_ignores_python_environment_settings() {
+    const CHILD_MARKER: &str = "PYBUNDLE_TEST_ISOLATED_ENVIRONMENT";
+    const IGNORED_PATH: &str = "pybundle-pythonpath-must-be-ignored";
+    if std::env::var_os(CHILD_MARKER).is_some() {
+        let home = pybundle::runtime_home().unwrap();
+        let executable = std::env::current_exe().unwrap();
+        pybundle::initialize().unwrap();
+        run_python(&format!(
+            "import sys\n\
+             assert sys.flags.utf8_mode == 1\n\
+             assert sys.flags.ignore_environment == 1\n\
+             assert all({IGNORED_PATH:?} not in path for path in sys.path)\n\
+             assert sys.prefix == {:?}\n\
+             assert sys.executable == {:?}\n",
+            home.to_str().unwrap(),
+            executable.to_str().unwrap(),
+        ));
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "initialization_ignores_python_environment_settings",
+            "--nocapture",
+        ])
+        .env(CHILD_MARKER, "1")
+        .env("PYTHONHOME", "pybundle-invalid-python-home")
+        .env("PYTHONPATH", IGNORED_PATH)
+        .env("PYTHONUTF8", "0")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn initialization_failure_returns_an_error_without_exiting_the_process() {
     const CHILD_MARKER: &str = "PYBUNDLE_TEST_FAILED_INITIALIZATION";
     if std::env::var_os(CHILD_MARKER).is_some() {
         // Satisfy the inexpensive directory check but deliberately omit the
-        // actual codecs, making CPython's initialization return a PyStatus error.
+        // actual codecs, making CPython's initialization return a config error.
         let home = incomplete_python_home("incomplete-python");
         let first = pybundle::initialize_from(&home).unwrap_err();
         assert!(matches!(first, pybundle::Error::Initialization(_)));

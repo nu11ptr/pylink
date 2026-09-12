@@ -3,7 +3,7 @@
 
 Example:
     python3 scripts/update_manifest.py --release 20260901 \
-        --versions 3.12.14 3.13.15 3.14.7
+        --versions 3.14.7
 
 Review the resulting diff and update the crate's default/version aliases separately.
 This is a maintainer tool; Cargo builds never query GitHub's latest-release API.
@@ -105,6 +105,8 @@ def main():
         parser.error("--release must be an eight-digit Astral release date")
     if any(not re.fullmatch(r"3\.\d+\.\d+", version) for version in args.versions):
         parser.error("--versions must contain exact stable Python 3 versions, e.g. 3.14.7")
+    if any(int(version.split(".")[1]) < 14 for version in args.versions):
+        parser.error("pybundle requires Python 3.14 or newer for the opaque PyInitConfig API")
     if len(set(args.versions)) != len(args.versions):
         parser.error("--versions must not contain duplicates")
     try:

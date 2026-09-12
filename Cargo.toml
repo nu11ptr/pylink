@@ -11,6 +11,3 @@ links = "pybundle_python"
 include = ["src/**", "build.rs", "build_support/**", "examples/basic.rs", "scripts/bundle.py", "README.md", "LICENSE"]
 
 [dependencies]
-
-[build-dependencies]
-cc = { version = "1.2", default-features = false }

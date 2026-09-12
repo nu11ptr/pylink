@@ -21,15 +21,24 @@ impl Distribution {
     pub fn select(version: &str, target: &str) -> Result<Self> {
         let parts: Vec<_> = version.split('.').collect();
         if !(parts.len() == 2 || parts.len() == 3)
-            || parts
-                .iter()
-                .any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()))
+            || parts.iter().any(|p| {
+                p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()) || p.parse::<u32>().is_err()
+            })
         {
             return Err(format!(
                 "invalid Python version {version:?}; use e.g. 3.14 or 3.14.7"
             ));
         }
-        let mut supported = false;
+        if (
+            parts[0].parse::<u32>().unwrap(),
+            parts[1].parse::<u32>().unwrap(),
+        ) < (3, 14)
+        {
+            return Err(format!(
+                "Python {version} is unsupported: pybundle requires Python 3.14 or newer for the opaque PyInitConfig API; set PYBUNDLE_PYTHON_VERSION=3.14 or update your PYBUNDLE_VERSION_FILE"
+            ));
+        }
+        let mut available = Vec::new();
         for line in CATALOG
             .lines()
             .filter(|line| !line.starts_with('#') && !line.is_empty())
@@ -39,7 +48,7 @@ impl Distribution {
             if fields[2] != target {
                 continue;
             }
-            supported = true;
+            available.push(fields[0]);
             if fields[0] == version
                 || (parts.len() == 2 && fields[0].starts_with(&format!("{version}.")))
             {
@@ -51,13 +60,14 @@ impl Distribution {
                 });
             }
         }
-        if !supported {
+        if available.is_empty() {
             Err(format!(
                 "unsupported Rust target {target:?}; supported: aarch64/x86_64-apple-darwin, aarch64/x86_64-unknown-linux-gnu, aarch64/x86_64-pc-windows-msvc (dynamic, GIL-enabled Python only)"
             ))
         } else {
             Err(format!(
-                "Python {version} is not in this crate's pinned catalog; choose 3.12, 3.13, or 3.14, or their exact catalog patch versions"
+                "Python {version} is not in this crate's pinned catalog; available patch versions for {target}: {}. Choose a listed version or update pybundle for a newer catalog",
+                available.join(", ")
             ))
         }
     }
@@ -126,9 +136,9 @@ impl Distribution {
         if !self.windows() && !self.macos() {
             files.push(PathBuf::from(format!("lib/lib{}.so", self.lib_name())));
         }
-        files.push(self.include_dir(Path::new("")).join("Python.h"));
+        // No C headers are compiled. Keep the version header solely to verify
+        // that the extracted distribution matches the pinned patch version.
         files.push(self.include_dir(Path::new("")).join("patchlevel.h"));
-        files.push(self.include_dir(Path::new("")).join("pyconfig.h"));
         files
     }
     pub fn validate_home(&self, home: &Path) -> Result<()> {
@@ -147,7 +157,7 @@ impl Distribution {
                 == ["#define", "PY_VERSION", &format!("\"{}\"", self.version)]
         }) {
             return Err(format!(
-                "Python headers do not match pinned version {}",
+                "Python version header does not match pinned version {}",
                 self.version
             ));
         }
@@ -465,7 +475,12 @@ mod tests {
     }
     #[test]
     fn catalog_is_complete_and_pinned() {
-        for version in ["3.12", "3.13", "3.14"] {
+        let versions: std::collections::BTreeSet<_> = CATALOG
+            .lines()
+            .filter(|line| !line.starts_with('#') && !line.is_empty())
+            .map(|line| line.split('\t').next().unwrap())
+            .collect();
+        for version in versions {
             for target in [
                 "aarch64-apple-darwin",
                 "x86_64-apple-darwin",
@@ -479,6 +494,7 @@ mod tests {
                 assert!(d.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
                 assert!(d.url().ends_with("-install_only_stripped.tar.gz"));
                 assert_eq!(Distribution::select(d.version, target).unwrap(), d);
+                assert!(Distribution::select(d.minor(), target).is_ok());
             }
         }
     }
@@ -500,6 +516,26 @@ mod tests {
         assert!(Distribution::select("3.14", "x86_64-unknown-linux-musl").is_err());
     }
     #[test]
+    fn old_python_versions_explain_the_minimum_and_how_to_select_it() {
+        for version in ["2.7", "3.12", "3.12.14", "3.13", "3.13.15"] {
+            let error = Distribution::select(version, "aarch64-apple-darwin").unwrap_err();
+            assert!(error.contains("requires Python 3.14 or newer"), "{error}");
+            assert!(error.contains("PyInitConfig"), "{error}");
+            assert!(error.contains("PYBUNDLE_PYTHON_VERSION=3.14"), "{error}");
+        }
+    }
+    #[test]
+    fn unavailable_future_versions_report_catalog_versions() {
+        let target = "aarch64-apple-darwin";
+        let error = Distribution::select("3.999", target).unwrap_err();
+        assert!(
+            error.contains("not in this crate's pinned catalog"),
+            "{error}"
+        );
+        let default = Distribution::select(DEFAULT_VERSION, target).unwrap();
+        assert!(error.contains(default.version), "{error}");
+    }
+    #[test]
     fn selects_by_target_not_host() {
         let windows = Distribution::select("3.14", "x86_64-pc-windows-msvc").unwrap();
         assert_eq!(windows.lib_name(), "python314");
@@ -507,8 +543,8 @@ mod tests {
             windows.include_dir(Path::new("python")),
             Path::new("python/include")
         );
-        let linux = Distribution::select("3.13", "aarch64-unknown-linux-gnu").unwrap();
-        assert_eq!(linux.lib_name(), "python3.13");
+        let linux = Distribution::select("3.14", "aarch64-unknown-linux-gnu").unwrap();
+        assert_eq!(linux.lib_name(), "python3.14");
         assert_ne!(windows.cache_key(), linux.cache_key());
     }
     #[test]

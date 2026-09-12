@@ -20,9 +20,12 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::{CStr, c_char, c_int};
+mod ffi;
+
+use std::ffi::{CStr, CString};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 use std::sync::OnceLock;
 
 /// The exact CPython version selected at build time.
@@ -51,20 +54,6 @@ pub const PYO3_CONFIG_FILE: &str = env!("PYBUNDLE_PYO3_CONFIG_FILE");
 /// `Contents/Resources/python` in a macOS application bundle.
 pub const BUILD_PYTHON_HOME: &str = env!("PYBUNDLE_PYTHON_HOME");
 
-#[cfg(windows)]
-type WideChar = u16;
-#[cfg(not(windows))]
-type WideChar = i32;
-
-unsafe extern "C" {
-    fn pybundle_initialize_interpreter(
-        home: *const WideChar,
-        executable: *const WideChar,
-        error: *mut c_char,
-        capacity: usize,
-    ) -> c_int;
-}
-
 static INITIALIZATION: OnceLock<Result<PathBuf, Error>> = OnceLock::new();
 
 /// An interpreter discovery or initialization error.
@@ -75,6 +64,8 @@ pub enum Error {
     InvalidHome { path: PathBuf, reason: String },
     /// An operating-system path contains an embedded null character.
     InvalidPath(PathBuf),
+    /// A path cannot be represented as UTF-8, as required by PyInitConfig.
+    NonUnicodePath(PathBuf),
     /// The current executable's path could not be determined.
     CurrentExecutable(String),
     /// CPython returned an initialization error.
@@ -100,6 +91,13 @@ impl fmt::Display for Error {
                 write!(
                     formatter,
                     "path contains a null character: {}",
+                    path.display()
+                )
+            }
+            Self::NonUnicodePath(path) => {
+                write!(
+                    formatter,
+                    "Python initialization requires a valid Unicode path: {}",
                     path.display()
                 )
             }
@@ -167,6 +165,10 @@ pub fn initialize() -> Result<(), Error> {
 /// must contain the standard library from the downloaded interpreter selected at
 /// build time. Calling this again with a different home returns an error.
 ///
+/// The Python home and executable paths must be valid Unicode (UTF-8 after
+/// conversion on Windows). Non-UTF-8 Unix paths and Windows paths containing
+/// unpaired surrogates return [`Error::NonUnicodePath`].
+///
 /// Homes prepared by this crate contain a `.pybundle-version` file, which must
 /// match [`PYTHON_VERSION`] exactly. Manually prepared homes without this marker
 /// are accepted; the caller must ensure their standard library and native
@@ -176,8 +178,11 @@ pub fn initialize() -> Result<(), Error> {
 /// able to locate the matching Python shared library when the executable starts.
 pub fn initialize_from(home: impl AsRef<Path>) -> Result<(), Error> {
     let home = validate_home(home.as_ref())?;
-    let result =
-        INITIALIZATION.get_or_init(|| initialize_interpreter(&home).map(|()| home.clone()));
+    // Validate paths before entering OnceLock so these errors remain retryable.
+    let home_string = utf8_path(&home)?;
+    let executable = utf8_path(&current_executable()?)?;
+    let result = INITIALIZATION
+        .get_or_init(|| initialize_interpreter(&home_string, &executable).map(|()| home.clone()));
     match result {
         Ok(initialized_home) if initialized_home == &home => Ok(()),
         Ok(initialized_home) => Err(Error::AlreadyInitialized {
@@ -239,12 +244,14 @@ fn standard_library(home: &Path) -> PathBuf {
 }
 
 fn validate_home(home: &Path) -> Result<PathBuf, Error> {
-    // Validate before canonicalization so nulls have a useful, platform-neutral error.
-    let _ = wide_path(home)?;
+    // Validate before filesystem calls to report NULs and encoding errors clearly.
+    let _ = utf8_path(home)?;
     let resolved = home.canonicalize().map_err(|error| Error::InvalidHome {
         path: home.to_path_buf(),
         reason: error.to_string(),
     })?;
+    // A Unicode symlink can resolve to a non-Unicode target on Unix.
+    let _ = utf8_path(&resolved)?;
     let version_marker = resolved.join(".pybundle-version");
     match std::fs::read_to_string(&version_marker) {
         Ok(version) if version.trim() == PYTHON_VERSION => {}
@@ -282,76 +289,100 @@ fn validate_home(home: &Path) -> Result<PathBuf, Error> {
     Ok(resolved)
 }
 
-fn initialize_interpreter(home: &Path) -> Result<(), Error> {
-    let home = wide_path(home)?;
-    let executable = wide_path(&current_executable()?)?;
-    let mut error = [0 as c_char; 2048];
-    // SAFETY: the C shim is built against the selected CPython headers. Both
-    // strings are terminated and remain alive during the call, and the error
-    // buffer has the declared capacity. INITIALIZATION serializes this call.
-    let result = unsafe {
-        pybundle_initialize_interpreter(
-            home.as_ptr(),
-            executable.as_ptr(),
-            error.as_mut_ptr(),
-            error.len(),
-        )
-    };
-    if result == 0 {
-        Ok(())
-    } else {
-        // SAFETY: the buffer starts zeroed and snprintf in the C shim preserves
-        // a final null, including when a diagnostic exceeds its capacity.
-        let message = unsafe { CStr::from_ptr(error.as_ptr()) };
-        Err(Error::Initialization(
-            message.to_string_lossy().into_owned(),
-        ))
-    }
-}
-
-fn wide_path(path: &Path) -> Result<Vec<WideChar>, Error> {
-    #[cfg(windows)]
-    let mut wide: Vec<WideChar> = {
-        use std::os::windows::ffi::OsStrExt;
-        path.as_os_str().encode_wide().collect()
-    };
-    #[cfg(unix)]
-    let mut wide = {
-        use std::os::unix::ffi::OsStrExt;
-        decode_filesystem_path(path.as_os_str().as_bytes())
-    };
-    if wide.contains(&0) {
-        return Err(Error::InvalidPath(path.to_path_buf()));
-    }
-    wide.push(0);
-    Ok(wide)
-}
-
-#[cfg(unix)]
-fn decode_filesystem_path(mut bytes: &[u8]) -> Vec<WideChar> {
-    let mut wide = Vec::with_capacity(bytes.len() + 1);
-    while !bytes.is_empty() {
-        match std::str::from_utf8(bytes) {
-            Ok(valid) => {
-                wide.extend(valid.chars().map(|character| character as WideChar));
-                break;
-            }
-            Err(error) => {
-                let (valid, rest) = bytes.split_at(error.valid_up_to());
-                // SAFETY: Utf8Error identifies the prefix as valid UTF-8.
-                let valid = unsafe { std::str::from_utf8_unchecked(valid) };
-                wide.extend(valid.chars().map(|character| character as WideChar));
-                let invalid_length = error.error_len().unwrap_or(rest.len());
-                wide.extend(
-                    rest[..invalid_length]
-                        .iter()
-                        .map(|byte| 0xdc00 + i32::from(*byte)),
-                );
-                bytes = &rest[invalid_length..];
-            }
+fn initialize_interpreter(home: &CStr, executable: &CStr) -> Result<(), Error> {
+    // SAFETY: INITIALIZATION serializes all calls through this crate. These
+    // query functions are valid before initialization; Py_GetVersion returns a
+    // non-null, static C string. Check that the loader found the selected build.
+    unsafe {
+        if ffi::Py_IsInitialized() != 0 {
+            return Err(Error::Initialization(
+                "CPython was initialized outside pybundle; call pybundle::initialize() first"
+                    .into(),
+            ));
+        }
+        let loaded = CStr::from_ptr(ffi::Py_GetVersion()).to_bytes();
+        if loaded.split(|byte| *byte == b' ').next() != Some(PYTHON_VERSION.as_bytes()) {
+            return Err(Error::Initialization(format!(
+                "loaded CPython does not match the selected version ({PYTHON_VERSION})"
+            )));
         }
     }
-    wide
+
+    // PyInitConfig_Create starts with isolated defaults. Python owns the object
+    // and exposes setters, so no version-specific fields or layouts are needed.
+    let mut config = InitConfig::new()?;
+    config.set_int(c"utf8_mode", 1)?;
+    config.set_int(c"parse_argv", 0)?;
+    config.set_int(c"install_signal_handlers", 0)?;
+    config.set_int(c"write_bytecode", 0)?;
+    config.set_str(c"home", home)?;
+    config.set_str(c"executable", executable)?;
+    // SAFETY: config is a live, exclusively owned Python configuration; all
+    // strings have been copied by the setters. Errors are copied before free.
+    config.check(unsafe { ffi::Py_InitializeFromInitConfig(config.0.as_ptr()) })?;
+    drop(config);
+    // SAFETY: successful initialization leaves this thread holding the GIL.
+    // Release it so PyO3 and other Python API wrappers can attach Rust threads.
+    unsafe { ffi::PyEval_SaveThread() };
+    Ok(())
+}
+
+struct InitConfig(NonNull<ffi::PyInitConfig>);
+
+impl InitConfig {
+    fn new() -> Result<Self, Error> {
+        // SAFETY: this constructor is valid before Python initialization.
+        NonNull::new(unsafe { ffi::PyInitConfig_Create() })
+            .map(Self)
+            .ok_or_else(|| Error::Initialization("cannot allocate Python configuration".into()))
+    }
+
+    fn set_int(&mut self, name: &CStr, value: i64) -> Result<(), Error> {
+        // SAFETY: self owns the live configuration; the name is terminated.
+        self.check(unsafe { ffi::PyInitConfig_SetInt(self.0.as_ptr(), name.as_ptr(), value) })
+    }
+
+    fn set_str(&mut self, name: &CStr, value: &CStr) -> Result<(), Error> {
+        // SAFETY: both strings are terminated and live for the call. Python
+        // copies the value, which our caller encoded as UTF-8.
+        self.check(unsafe {
+            ffi::PyInitConfig_SetStr(self.0.as_ptr(), name.as_ptr(), value.as_ptr())
+        })
+    }
+
+    fn check(&self, status: std::ffi::c_int) -> Result<(), Error> {
+        if status == 0 {
+            return Ok(());
+        }
+        let mut message = std::ptr::null();
+        // SAFETY: self still owns the failed configuration. GetError also
+        // formats requested exit codes as errors; it never exits the process.
+        unsafe { ffi::PyInitConfig_GetError(self.0.as_ptr(), &mut message) };
+        let message = if message.is_null() {
+            "unknown Python initialization error".into()
+        } else {
+            // SAFETY: copy the returned C string before any further config API
+            // call (including Free), which may invalidate Python's message.
+            unsafe { CStr::from_ptr(message) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        Err(Error::Initialization(message))
+    }
+}
+
+impl Drop for InitConfig {
+    fn drop(&mut self) {
+        // SAFETY: this pointer came from Create and is freed exactly once.
+        unsafe { ffi::PyInitConfig_Free(self.0.as_ptr()) };
+    }
+}
+
+fn utf8_path(path: &Path) -> Result<CString, Error> {
+    let value = path
+        .to_str()
+        .ok_or_else(|| Error::NonUnicodePath(path.to_path_buf()))?;
+    CString::new(value).map_err(|_| Error::InvalidPath(path.to_path_buf()))
 }
 
 #[cfg(test)]
@@ -472,24 +503,19 @@ mod tests {
 
     #[test]
     fn encodes_unicode_and_rejects_nulls() {
-        let encoded = wide_path(Path::new("Python-\u{03bb}-\u{1f40d}")).unwrap();
-        assert_eq!(encoded.last(), Some(&0));
-        #[cfg(unix)]
-        assert_eq!(encoded[7], 0x3bb);
+        let encoded = utf8_path(Path::new("Python-\u{03bb}-\u{1f40d}")).unwrap();
+        assert_eq!(encoded.to_str().unwrap(), "Python-\u{03bb}-\u{1f40d}");
         assert!(matches!(
-            wide_path(Path::new("bad\0path")),
+            utf8_path(Path::new("bad\0path")),
             Err(Error::InvalidPath(_))
         ));
     }
 
     #[cfg(unix)]
     #[test]
-    fn preserves_non_utf8_unix_paths_with_surrogateescape() {
+    fn rejects_non_utf8_unix_paths() {
         use std::os::unix::ffi::OsStrExt;
         let path = Path::new(std::ffi::OsStr::from_bytes(b"x\xff\xe2\x82y"));
-        assert_eq!(
-            wide_path(path).unwrap(),
-            [120, 0xdcff, 0xdce2, 0xdc82, 121, 0]
-        );
+        assert!(matches!(utf8_path(path), Err(Error::NonUnicodePath(_))));
     }
 }

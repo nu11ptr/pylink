@@ -168,7 +168,7 @@ fn corrupt_library_is_repaired_from_valid_cached_archive() {
 }
 
 #[test]
-fn incorrect_headers_and_missing_completion_marker_are_repaired() {
+fn incorrect_version_header_and_missing_completion_marker_are_repaired() {
     let fixture = CachedArchive::new();
     let home = fixture.prepare();
     let header = fixture.distribution.include_dir(&home).join("patchlevel.h");

@@ -13,7 +13,6 @@ fn build() -> build_support::Result<()> {
         "build.rs",
         "build_support/mod.rs",
         "build_support/distributions.tsv",
-        "src/initialize.c",
     ] {
         println!("cargo:rerun-if-changed={file}");
     }
@@ -44,11 +43,6 @@ fn build() -> build_support::Result<()> {
     let native = out.join("native");
     build_support::stage_native(&distribution, &home, &native)?;
 
-    cc::Build::new()
-        .file("src/initialize.c")
-        .include(distribution.include_dir(&home))
-        .warnings(true)
-        .compile("pybundle_init");
     println!("cargo:rustc-link-search=native={}", native.display());
     println!("cargo:rustc-link-lib=dylib={}", distribution.lib_name());
     println!("cargo:rustc-env=PYBUNDLE_PYTHON_HOME={}", home.display());

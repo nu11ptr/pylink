@@ -10,16 +10,18 @@ permissions:
 
 jobs:
   smoke:
-    name: Embed and relocate (${{ matrix.os }})
+    name: Embed and relocate (${{ matrix.os }}, Python ${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2025, macos-15, macos-15-intel]
+        python: ['3.14']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
       CARGO_TERM_COLOR: always
       PYBUNDLE_CACHE_DIR: ${{ runner.temp }}/pybundle-cache
+      PYBUNDLE_PYTHON_VERSION: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -29,11 +31,11 @@ jobs:
       # builds explicitly set PYO3_PYTHON to a nonexistent executable.
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - uses: actions/cache@v6
         with:
           path: ${{ env.PYBUNDLE_CACHE_DIR }}
-          key: pybundle-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build_support/distributions.tsv') }}
+          key: pybundle-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python }}-${{ hashFiles('build_support/distributions.tsv') }}
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check basic downstream example formatting
@@ -42,5 +44,5 @@ jobs:
       - name: Check PyO3 downstream example formatting
         working-directory: examples/pyo3-app
         run: cargo fmt -- --check
-      - name: Build, initialize, reuse cache offline, and run relocated bundles
+      - name: Build without a C compiler, initialize, reuse cache offline, and relocate
         run: python scripts/smoke.py
