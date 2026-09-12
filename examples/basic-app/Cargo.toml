@@ -1,0 +1,11 @@
+[package]
+name = "pybundle-basic-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+pybundle = { path = "../.." }
+
+# Exercise pybundle as an ordinary dependency of an independent binary crate.
+[workspace]
