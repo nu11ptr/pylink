@@ -8,6 +8,6 @@ license = "MIT"
 readme = "README.md"
 repository = "https://github.com/nu11ptr/pylink"
 links = "pylink_python"
-include = ["src/**", "build.rs", "build_support/**", "examples/basic.rs", "scripts/bundle.py", "README.md", "LICENSE"]
+include = ["src/**", "build.rs", "build_support/**", "examples/hello.rs", "scripts/bundle.py", "/README.md", "LICENSE"]
 
 [dependencies]

@@ -1,0 +1,11 @@
+[package]
+name = "pylink-basic-smoke-test"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+pylink = { path = "../../.." }
+
+# CI test application: exercise pylink as an ordinary downstream dependency.
+[workspace]

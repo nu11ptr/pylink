@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build real consumers, then run their relocated bundles without build caches.
+"""Run getting-started examples and integration tests, including relocated bundles.
 
 Python is only the test/packaging driver. C/C++ compiler configuration and PyO3
 interpreter discovery are poisoned, and the packaged applications run with a
@@ -16,8 +16,9 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BASIC_FIXTURE = ROOT / "examples" / "basic-app"
-PYO3_FIXTURE = ROOT / "examples" / "pyo3-app"
+BASIC_FIXTURE = ROOT / "tests" / "fixtures" / "basic-app"
+PYO3_FIXTURE = ROOT / "tests" / "fixtures" / "pyo3-app"
+PYO3_EXAMPLE = ROOT / "examples" / "hello-pyo3"
 SUFFIX = ".exe" if os.name == "nt" else ""
 
 
@@ -109,6 +110,11 @@ def main():
         assert not package["dependencies"], package["dependencies"]
 
         run(["cargo", "test", "--locked", "--all-targets"], env=env)
+        run(["cargo", "run", "--locked", "--example", "hello"], env=env)
+        # Run from the example's own directory so its checked-in Cargo/PyO3
+        # configuration is exercised exactly as the getting-started guide uses it.
+        run(["cargo", "run", "--locked"], cwd=PYO3_EXAMPLE, env=env)
+
         # Test an independent binary crate whose only dependency is pylink.
         run(["cargo", "run", "--locked"], cwd=BASIC_FIXTURE, env=env)
         run(["cargo", "run", "--locked", "--release"], cwd=BASIC_FIXTURE, env=env)
@@ -142,8 +148,8 @@ def main():
         run(["cargo", "run", "--locked", "--offline"], cwd=BASIC_FIXTURE, env=offline_env)
 
         binaries = [
-            target / "release" / f"pylink-basic-example{SUFFIX}",
-            target / "release" / f"pylink-pyo3-example{SUFFIX}",
+            target / "release" / f"pylink-basic-smoke-test{SUFFIX}",
+            target / "release" / f"pylink-pyo3-smoke-test{SUFFIX}",
         ]
         bundles = []
         for binary in binaries:
@@ -178,7 +184,7 @@ def main():
             for binary in bundles:
                 run([binary], cwd=work, env=runtime_env)
         print(
-            f"Python {minor}: no-C-compiler, downstream, offline-cache, and relocated-bundle checks passed.",
+            f"Python {minor}: hello examples, no-C-compiler, downstream, offline-cache, and relocated-bundle checks passed.",
             flush=True,
         )
 

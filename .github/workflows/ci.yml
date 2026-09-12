@@ -37,11 +37,14 @@ jobs:
           key: pylink-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python }}-${{ hashFiles('build_support/distributions.tsv') }}
       - name: Check formatting
         run: cargo fmt --all -- --check
-      - name: Check basic downstream example formatting
-        working-directory: examples/basic-app
+      - name: Check PyO3 hello example formatting
+        working-directory: examples/hello-pyo3
         run: cargo fmt -- --check
-      - name: Check PyO3 downstream example formatting
-        working-directory: examples/pyo3-app
+      - name: Check basic integration test fixture formatting
+        working-directory: tests/fixtures/basic-app
+        run: cargo fmt -- --check
+      - name: Check PyO3 integration test fixture formatting
+        working-directory: tests/fixtures/pyo3-app
         run: cargo fmt -- --check
       - name: Build without a C compiler, initialize, reuse cache offline, and relocate
         env:

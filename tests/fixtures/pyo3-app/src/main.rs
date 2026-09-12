@@ -1,3 +1,5 @@
+//! CI integration test application; run through scripts/smoke.py.
+
 use pyo3::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

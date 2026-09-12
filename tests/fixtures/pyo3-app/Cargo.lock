@@ -25,7 +25,7 @@ name = "pylink"
 version = "0.1.0"
 
 [[package]]
-name = "pylink-pyo3-example"
+name = "pylink-pyo3-smoke-test"
 version = "0.1.0"
 dependencies = [
  "pylink",

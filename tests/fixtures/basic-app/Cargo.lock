@@ -7,7 +7,7 @@ name = "pylink"
 version = "0.1.0"
 
 [[package]]
-name = "pylink-basic-example"
+name = "pylink-basic-smoke-test"
 version = "0.1.0"
 dependencies = [
  "pylink",

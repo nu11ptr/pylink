@@ -1,11 +1,11 @@
 [package]
-name = "pylink-basic-example"
+name = "pylink-hello-pyo3"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [dependencies]
 pylink = { path = "../.." }
+pyo3 = { version = "0.29.2", default-features = false }
 
-# Exercise pylink as an ordinary dependency of an independent binary crate.
 [workspace]

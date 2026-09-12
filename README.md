@@ -21,6 +21,26 @@ fn main() -> Result<(), pylink::Error> {
 This repository is an initial implementation; the dependency declaration above
 assumes publication. For now use a local path or this Git repository.
 
+## Examples
+
+[`examples/hello.rs`](examples/hello.rs) initializes Python once and prints a
+greeting from Rust. It uses only pylink:
+
+```sh
+cargo run --example hello
+```
+
+[`examples/hello-pyo3`](examples/hello-pyo3) evaluates a greeting in Python using
+PyO3, then prints it from Rust:
+
+```sh
+cd examples/hello-pyo3
+cargo run
+```
+
+Run Cargo from that directory so it reads the included `.cargo/config.toml`.
+The output is `Hello from Python!`.
+
 ## Build requirements and supported targets
 
 Rust **1.89+** with its normal native linker/SDK, `curl`, `tar`, and the
@@ -167,8 +187,8 @@ expose build-time information. The build script also supplies
 
 ## PyO3
 
-PyO3 is not a pylink dependency. The complete standalone application in
-[`examples/pyo3-app`](examples/pyo3-app) demonstrates integration:
+PyO3 is not a pylink dependency. The hello-world application in
+[`examples/hello-pyo3`](examples/hello-pyo3) demonstrates integration:
 
 ```toml
 [dependencies]
@@ -181,11 +201,10 @@ use pyo3::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     pylink::initialize()?;
-    Python::attach(|py| -> PyResult<()> {
-        let sys = py.import("sys")?;
-        println!("{}", sys.getattr("version")?);
-        Ok(())
+    let greeting = Python::attach(|py| -> PyResult<String> {
+        py.eval(c"'Hello from Python!'", None, None)?.extract()
     })?;
+    println!("{greeting}");
     Ok(())
 }
 ```
@@ -238,8 +257,7 @@ python3 scripts/bundle.py --binary /path/to/myapp \
 ```
 
 On Windows use `python` instead of `python3`. The output directory must not
-already exist. To see a home path in this repository, run
-`cargo run --example basic -- --print-home`. For your own application, expose
+already exist. To obtain your application's Python home, expose
 `pylink::BUILD_PYTHON_HOME` in your packaging tooling or read the build metadata.
 The binary and Python home must come from the **same target and version**.
 
@@ -326,12 +344,15 @@ cargo test --doc
 python3 scripts/smoke.py
 ```
 
-The smoke test builds a [dependency-only consumer](examples/basic-app) and a
-real PyO3 consumer with system-interpreter discovery
-pointing at a nonexistent file; imports native modules including SSL, SQLite,
-ctypes and zlib; attaches another Rust thread; rebuilds in a fresh target
-directory offline; and runs both application bundles after moving the cache and
-build directories out of reach. Bundles have spaces and Unicode characters in
+The smoke test runs both hello-world examples, then exercises the
+[dependency-only test application](tests/fixtures/basic-app) and
+[PyO3 test application](tests/fixtures/pyo3-app). These CI fixtures contain
+assertions and repeated initialization calls to check that initialization is
+safe to repeat. They build with system-interpreter discovery pointing at a
+nonexistent file; import native modules including SSL, SQLite,
+ctypes and zlib; and attach another Rust thread. The driver rebuilds in a fresh
+target directory offline and runs both test application bundles after moving
+the cache and build directories out of reach. Bundles have spaces and Unicode characters in
 their paths and run with minimal environments. Unit/integration tests also
 exercise initialization errors, version/target selection, integrity, offline
 cache repair, and locking.

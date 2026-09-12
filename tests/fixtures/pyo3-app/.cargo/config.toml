@@ -1,0 +1,4 @@
+[env]
+# Cargo resolves this relative to the directory containing .cargo, making the
+# config portable across machines. Run Cargo from tests/fixtures/pyo3-app.
+PYO3_CONFIG_FILE = { value = "pyo3-config.txt", relative = true }

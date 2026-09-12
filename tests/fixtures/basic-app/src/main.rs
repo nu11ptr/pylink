@@ -1,4 +1,4 @@
-//! Run with `cargo run --example basic`.
+//! CI integration test application; run through scripts/smoke.py.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().nth(1).as_deref() == Some("--print-home") {
@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     pylink::initialize()?;
-    // Initialization is idempotent, and releases the GIL for Python bindings.
+    // Verify that repeated initialization is safe.
     pylink::initialize()?;
     println!(
         "Initialized Python {} from {}",

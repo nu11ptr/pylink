@@ -1,4 +1,4 @@
 [env]
 # Cargo resolves this relative to the directory containing .cargo, making the
-# config portable across machines. Run Cargo from examples/pyo3-app.
+# config portable across machines. Run Cargo from examples/hello-pyo3.
 PYO3_CONFIG_FILE = { value = "pyo3-config.txt", relative = true }
