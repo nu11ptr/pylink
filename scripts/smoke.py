@@ -67,6 +67,11 @@ def main():
             PYBUNDLE_CACHE_DIR=str(cache),
             PYO3_PYTHON=str(work / "there-is-no-system-python"),
         )
+        if os.name == "nt":
+            # Hashing must work without PowerShell modules. In particular, the
+            # runner's PowerShell 7 module paths can break Get-FileHash when
+            # inherited by Windows PowerShell through Python and Cargo.
+            env["PSMODULEPATH"] = str(work / "there-are-no-powershell-modules")
         selected_version = os.environ.get("PYBUNDLE_PYTHON_VERSION")
         if selected_version:
             env["PYBUNDLE_PYTHON_VERSION"] = selected_version

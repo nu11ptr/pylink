@@ -258,7 +258,29 @@ pub fn run(command: &mut Command) -> Result<String> {
 
 pub fn checksum(path: &Path) -> Result<String> {
     let output = if cfg!(windows) {
-        run(Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; (Get-FileHash -LiteralPath $env:PYBUNDLE_HASH_FILE -Algorithm SHA256).Hash"]).env("PYBUNDLE_HASH_FILE", path))?
+        // Use .NET directly: a PSModulePath inherited from PowerShell 7 can
+        // prevent Windows PowerShell from loading the Get-FileHash cmdlet.
+        run(Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                r#"
+$ErrorActionPreference = 'Stop'
+$hasher = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $stream = [System.IO.File]::OpenRead($env:PYBUNDLE_HASH_FILE)
+    try {
+        [System.BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '')
+    } finally {
+        $stream.Dispose()
+    }
+} finally {
+    $hasher.Dispose()
+}
+"#,
+            ])
+            .env("PYBUNDLE_HASH_FILE", path))?
     } else if cfg!(target_os = "macos") {
         run(Command::new("shasum").args(["-a", "256"]).arg(path))?
     } else {
@@ -548,9 +570,14 @@ mod tests {
         assert_ne!(windows.cache_key(), linux.cache_key());
     }
     #[test]
-    fn system_checksum_matches_known_vector_and_detects_corruption() {
+    fn system_checksum_matches_known_vectors_and_detects_corruption() {
         let dir = temp();
-        let file = dir.join("space ' unicode λ.txt");
+        let file = dir.join("space ' unicode λ [literal].txt");
+        fs::write(&file, b"").unwrap();
+        assert_eq!(
+            checksum(&file).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
         fs::write(&file, b"abc").unwrap();
         assert_eq!(
             checksum(&file).unwrap(),
@@ -561,6 +588,8 @@ mod tests {
             checksum(&file).unwrap(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+        fs::remove_file(&file).unwrap();
+        assert!(checksum(&file).is_err(), "missing file must fail hashing");
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
