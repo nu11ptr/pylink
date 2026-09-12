@@ -1,9 +1,10 @@
 # pylink
 
-Download, cache, link, and initialize a redistributable CPython interpreter in a
-Rust application. Uses Astral's smallest regular, GIL-enabled
-[`install_only_stripped` builds](https://github.com/astral-sh/python-build-standalone).
-No system Python installation is needed to build or run your application.
+Download, cache, link, and initialize CPython in a Rust application.
+
+- Uses Astral's stripped [standalone Python builds](https://github.com/astral-sh/python-build-standalone).
+- No installed Python needed to build or run your application.
+- Zero Cargo dependencies. No C/C++ source compilation.
 
 ```toml
 [dependencies]
@@ -18,177 +19,127 @@ fn main() -> Result<(), pylink::Error> {
 }
 ```
 
-This repository is an initial implementation; the dependency declaration above
-assumes publication. For now use a local path or this Git repository.
+Until published, use a path or Git dependency.
 
 ## Examples
 
-[`examples/hello.rs`](examples/hello.rs) initializes Python once and prints a
-greeting from Rust. It uses only pylink:
+- [Rust hello](examples/hello.rs): initialize Python and print a Rust greeting.
 
-```sh
-cargo run --example hello
-```
+  ```sh
+  cargo run --example hello
+  ```
 
-[`examples/hello-pyo3`](examples/hello-pyo3) evaluates a greeting in Python using
-PyO3, then prints it from Rust:
+- [PyO3 hello](examples/hello-pyo3): evaluate a greeting in Python.
 
-```sh
-cd examples/hello-pyo3
-cargo run
-```
+  ```sh
+  cd examples/hello-pyo3
+  cargo run
+  ```
 
-Run Cargo from that directory so it reads the included `.cargo/config.toml`.
-The output is `Hello from Python!`.
+Run the PyO3 example from its directory so Cargo reads `.cargo/config.toml`.
 
 ## Build requirements and supported targets
 
-Rust **1.89+** with its normal native linker/SDK, `curl`, `tar`, and the
-platform's SHA-256 utility. pylink has **zero Cargo dependencies**, including
-build dependencies, and compiles no C or C++ source.
+- Rust **1.89+**, with its usual linker and SDK.
+- Python **3.14+**; downloaded automatically.
+- `curl`, `tar`, and a SHA-256 tool:
 
-Rust calls Python 3.14+'s opaque
-[`PyInitConfig` API](https://docs.python.org/3.14/c-api/init_config.html#pyinitconfig-c-api)
-directly through the C ABI. Python allocates and manages the configuration;
-pylink sets options through functions without duplicating Python's struct
-layouts. No `bindgen`, `libclang`, or C compiler is needed.
-
-| Target | Build prerequisites | Python's minimum OS |
+| Target | Tools / SDK | Python's minimum OS |
 | --- | --- | --- |
-| `aarch64-apple-darwin` | Xcode Command Line Tools; macOS-provided curl, tar, shasum | macOS 11 |
+| `aarch64-apple-darwin` | Xcode Command Line Tools; built-in curl, tar, shasum | macOS 11 |
 | `x86_64-apple-darwin` | Same | macOS 10.15 |
-| `x86_64-unknown-linux-gnu` | Normal Rust linker toolchain, curl, tar with gzip, sha256sum | glibc 2.17 |
+| `x86_64-unknown-linux-gnu` | Rust linker toolchain, curl, tar with gzip, sha256sum | glibc 2.17 |
 | `aarch64-unknown-linux-gnu` | Same | glibc 2.17 |
-| `x86_64-pc-windows-msvc` | MSVC linker and Windows SDK (normal Rust setup); Windows curl.exe, tar.exe, PowerShell | Windows 10 for Python 3.14 |
-| `aarch64-pc-windows-msvc` | Same, with ARM64 linker/SDK components | Same |
+| `x86_64-pc-windows-msvc` | MSVC linker/Windows SDK; built-in curl.exe, tar.exe, PowerShell | Windows 10 |
+| `aarch64-pc-windows-msvc` | Same, with ARM64 linker/SDK | Windows 10 |
 
-For Debian/Ubuntu, `apt-get install curl tar gzip coreutils` provides the download
-and extraction tools. Keep the linker setup you normally use for Rust binaries:
-the default GNU Rust toolchain commonly invokes `cc` as its linker driver, even
-when compiling only Rust. On macOS, `xcode-select --install` provides the usual
-linker and SDK. pylink adds no C compilation requirement to that setup.
-Rust, third-party libraries, or your application may require newer OS versions
-than Python itself. See [upstream platform requirements](https://github.com/astral-sh/python-build-standalone/blob/20260901/docs/running.rst).
+- Debian/Ubuntu tools: `apt-get install curl tar gzip coreutils`.
+- macOS toolchain: `xcode-select --install`.
+- Linux's Rust toolchain may still use `cc` as its linker driver.
+- Selection follows Cargo's target. Cross-compiling needs the target linker/SDK.
+- CI covers Linux x64, Windows x64, and macOS ARM64/x64. Linux/Windows ARM64 are available but not CI-tested.
+- Unsupported: musl, MinGW, 32-bit, and free-threaded Python.
 
-Distribution selection uses Cargo's **TARGET**, never the build host. Native
-builds are the tested path. Cross-compilation also needs the target linker and
-SDK configured through Cargo; pylink does not install those.
-The CI matrix covers Linux x64, Windows x64, and macOS ARM64/x64. Linux and Windows
-ARM64 have pinned distributions but are not exercised in CI yet. musl, MinGW,
-32-bit, free-threaded Python, and static linking are not supported.
+Your Rust toolchain or application may need a newer OS than Python's minimum.
+See [upstream requirements](https://github.com/astral-sh/python-build-standalone/blob/20260901/docs/running.rst).
 
 ## Choosing Python
 
-Python **3.14+** is required. The default is **Python 3.14.7**, from Astral release
-**20260901**. Each crate release pins its downloads and SHA-256 hashes; builds
-never query GitHub's "latest" endpoint. Updating pylink updates the available interpreter catalog.
-This makes builds reproducible and usable offline after the first download.
+- Default: **Python 3.14.7**, Astral release **20260901**.
+- Current catalog accepts `3.14` or `3.14.7`.
+- Downloads and SHA-256 hashes are pinned per crate release. Unsupported versions fail.
 
-Select a supported series or exact patch in your application's
-`.cargo/config.toml`:
+Set the version in your application's `.cargo/config.toml`:
 
 ```toml
 [env]
 PYLINK_PYTHON_VERSION = "3.14"
 ```
 
-The current catalog contains `3.14` / `3.14.7` for every target above.
-Unsupported versions fail with a diagnostic; they do not silently select a
-different patch or contact a mutable release URL.
-
-Alternatively, keep a one-line `.python-version` file containing `3.14`, and
-explicitly tell Cargo where to find it:
+Or use a one-line `.python-version` file containing `3.14`:
 
 ```toml
 [env]
 PYLINK_VERSION_FILE = { value = ".python-version", relative = true }
 ```
 
-The environment variable `PYLINK_PYTHON_VERSION` takes precedence over the
-file, which takes precedence over the default. Changes to the selected file
-trigger a rebuild. Run Cargo from the application/workspace so it discovers its
-`.cargo/config.toml`.
-
-Cargo supports `[package.metadata]`, but it does not pass an application's
-metadata or root directory to a dependency's build script. Explicit Cargo
-configuration avoids guessing which consumer owns a `.python-version` file.
-Version features would also be additive across dependencies and could conflict.
+- Precedence: `PYLINK_PYTHON_VERSION` → version file → default.
+- Run Cargo from the application/workspace directory to load its configuration.
+- Changes to the selected version file trigger a rebuild.
 
 ## Cache and network behavior
 
-Default cache locations:
-
-| Build host | Directory |
+| Build host | Default cache |
 | --- | --- |
 | macOS | `~/Library/Caches/pylink` |
 | Linux | `$XDG_CACHE_HOME/pylink`, or `~/.cache/pylink` |
 | Windows | `%LOCALAPPDATA%\pylink\Cache` |
 
-Each cache entry is keyed by exact Python version, Astral release, target, and
-full expected SHA-256. The original archive and extracted runtime are retained.
-Whenever the build script runs, it checks the archive hash, completion marker,
-required layout, exact header version, and hashes of the native libraries,
-version header, and encoding entry point. Missing or damaged extraction
-is rebuilt from the verified cached archive. It does not hash every standard
-library file on each build; delete the entry if other extracted files are damaged.
-
-Downloads use HTTPS, a temporary file, retries, and a pinned hash checked before
-extraction. An OS file lock serializes concurrent builds; it is released if a
-build process dies. Extraction is staged before publication. No administrator
-access or global Python installation is used.
-
-Useful settings in `.cargo/config.toml` or the shell:
+- Reuses cached downloads for the selected version, release, target, and hash.
+- Verifies SHA-256 before extraction; checks key runtime files on reuse.
+- Repairs missing or damaged key files from the cached archive.
+- Delete the cache entry if other extracted files are damaged.
+- Concurrent builds share the cache through file locking.
 
 | Setting | Meaning |
 | --- | --- |
-| `PYLINK_CACHE_DIR` | Absolute override for the entire cache directory |
-| `PYLINK_OFFLINE=1` | Forbid downloads; fail if a verified archive is unavailable |
-| `CARGO_NET_OFFLINE=true` | Also forbids pylink downloads when set as an environment variable |
-| `PYLINK_LINK_MODE=dynamic` | The only supported link mode; also the default |
+| `PYLINK_CACHE_DIR` | Absolute cache directory override |
+| `PYLINK_OFFLINE=1` | Forbid Python downloads |
+| `CARGO_NET_OFFLINE=true` | Also forbids Python downloads when set in the environment |
+| `PYLINK_LINK_MODE=dynamic` | Default and only supported link mode |
 
-For fully offline builds, use **both** `cargo --offline` and
-`PYLINK_OFFLINE=1`: Cargo's command-line `--offline` flag is not exposed to
-dependency build scripts. Cargo's crate cache must also already be populated.
-Keep the interpreter cache while working on applications that use its development
-fallback. Cargo detects missing critical cache files on the next build.
+For fully offline builds, populate the Cargo and interpreter caches, then use **both**
+`cargo --offline` and `PYLINK_OFFLINE=1`.
 
 ## Initialization
 
-`initialize()` starts Python in isolated mode, ignores `PYTHONHOME`, `PYTHONPATH`,
-user site packages and the application's command-line arguments, disables Python
-signal handler installation and bytecode writes, then releases the GIL. Call it
-at startup, preferably on the main thread, **before** another library initializes
-Python. Concurrent calls through pylink are serialized and repeated calls are
-safe. The interpreter lives until process exit; do not finalize or independently
-reinitialize it.
+- Call `initialize()` at startup, preferably on the main thread, before using Python.
+- Repeated and concurrent calls are safe.
+- Isolated mode ignores Python environment settings, user site packages, and application arguments.
+- Leaves signal handlers unchanged, disables bytecode writes, and releases the GIL.
+- Python stays initialized until process exit. Do not finalize or independently reinitialize it.
 
-Python home lookup, in order:
+Python home lookup order:
 
-1. Runtime `PYLINK_PYTHON_HOME` override.
-2. A `python/` directory beside the application executable.
-3. `Contents/Resources/python/` for a macOS `Contents/MacOS/` executable.
-4. The downloaded build-time cache, for development.
+1. Runtime `PYLINK_PYTHON_HOME`.
+2. `python/` beside the executable.
+3. `Contents/Resources/python/` for a macOS `.app`.
+4. The build-time interpreter cache, for development.
 
-An existing but incomplete bundle returns an error. It is not silently replaced
-with a cache or system interpreter. `initialize_from(path)` selects an explicit
-home; `runtime_home()` returns the selected directory. These select the standard
-library **after** the OS loads the executable. Shared library discovery must be
-configured before launch, as described below.
+- `initialize_from(path)`: use an explicit Python home.
+- `runtime_home()`: get the selected home.
+- Incomplete bundles return an error. Paths must be valid Unicode; spaces are supported.
+- Library loading must be configured before launch; see [shipping](#shipping-an-application).
 
-The Python home and application executable paths must be valid Unicode because
-`PyInitConfig` accepts UTF-8 strings. Spaces and Unicode characters are supported.
-Non-UTF-8 paths on Unix and unpaired UTF-16 surrogates on Windows return an error
-instead of being converted lossily.
+Build information:
 
-`PYTHON_VERSION`, `PYTHON_RELEASE`, `BUILD_PYTHON_HOME`, and `PYO3_CONFIG_FILE`
-expose build-time information. The build script also supplies
-`DEP_PYLINK_PYTHON_PYTHON_HOME`, `DEP_PYLINK_PYTHON_PYTHON_VERSION`, and
-`DEP_PYLINK_PYTHON_PYO3_CONFIG_FILE` to an immediate consumer's build script.
+- Constants: `PYTHON_VERSION`, `PYTHON_RELEASE`, `BUILD_PYTHON_HOME`, `PYO3_CONFIG_FILE`.
+- Consumer build-script variables: `DEP_PYLINK_PYTHON_PYTHON_HOME`,
+  `DEP_PYLINK_PYTHON_PYTHON_VERSION`, `DEP_PYLINK_PYTHON_PYO3_CONFIG_FILE`.
 
 ## PyO3
 
-PyO3 is not a pylink dependency. The hello-world application in
-[`examples/hello-pyo3`](examples/hello-pyo3) demonstrates integration:
+See the complete [hello-world example](examples/hello-pyo3).
 
 ```toml
 [dependencies]
@@ -209,7 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Check in `pyo3-config.txt` beside the application's Cargo.toml:
+Place `pyo3-config.txt` beside the application's `Cargo.toml`:
 
 ```text
 implementation=CPython
@@ -219,36 +170,28 @@ abi3=false
 suppress_build_script_link_lines=true
 ```
 
-Then point PyO3 to it in `.cargo/config.toml`:
+Point to it in `.cargo/config.toml`:
 
 ```toml
 [env]
 PYO3_CONFIG_FILE = { value = "pyo3-config.txt", relative = true }
 ```
 
-**Keep the PyO3 config's minor version equal to pylink's selected minor.**
-This disables system-interpreter discovery and lets pylink supply the native
-link. Do not enable PyO3's `auto-initialize`, `extension-module`, or `abi3`
-features with this full-API example. The Windows build also supplies the generic
-`pythonXY.lib` alias used by PyO3 with suppressed link configuration.
+- Keep the config's Python minor version equal to pylink's selected minor.
+- This config disables system-Python discovery and leaves linking to pylink.
+- Leave PyO3's `auto-initialize`, `extension-module`, and `abi3` features disabled.
+- For builds that prepare Python first, pylink also exposes a generated config as `PYO3_CONFIG_FILE`.
 
-PyO3 and pylink have independent build scripts: pylink cannot set an
-environment variable for its sibling before it builds. A checked-in config
-solves that ordering problem. pylink additionally generates an exact config in
-each cache entry and exposes its path as `PYO3_CONFIG_FILE` for workflows that
-prepare Python first and build the consumer afterward. See
-[PyO3 build configuration](https://pyo3.rs/v0.29.2/building-and-distribution.html).
+More: [PyO3 build configuration](https://pyo3.rs/v0.29.2/building-and-distribution.html).
 
 ## Shipping an application
 
-`cargo run` and `cargo test` work without setting loader paths: pylink stages
-native libraries in Cargo's build output and emits the native link instructions.
-For distribution, ship the **entire** selected Python home, including its native
-extensions, data, and license notices. A stripped interpreter still needs its
-standard library. This implementation does not produce a single-file executable.
+- `cargo run` and `cargo test` handle development library paths automatically.
+- Ship the **entire Python home**, including native extensions and licenses.
+- Use the **same target and Python version** as the binary.
+- Your users do not need Python installed.
 
-Use the stdlib-only helper on the target OS (Python is needed for packaging,
-not by your users):
+Package on the target OS with [scripts/bundle.py](scripts/bundle.py):
 
 ```sh
 python3 scripts/bundle.py --binary /path/to/myapp \
@@ -256,32 +199,26 @@ python3 scripts/bundle.py --binary /path/to/myapp \
   --output dist/myapp
 ```
 
-On Windows use `python` instead of `python3`. The output directory must not
-already exist. To obtain your application's Python home, expose
-`pylink::BUILD_PYTHON_HOME` in your packaging tooling or read the build metadata.
-The binary and Python home must come from the **same target and version**.
+- Use `python` on Windows. Python is needed only to run the packaging helper.
+- Obtain the home from `pylink::BUILD_PYTHON_HOME` or build-script metadata.
+- Choose an output directory that does not already exist.
+- The helper creates the layouts below and configures library loading.
 
 ### Linux
 
 ```text
 myapp/
-  myapp                    # shell launcher; users run this
-  bin/myapp                # actual Rust executable
+  myapp                    # launcher; run this
+  bin/myapp                # Rust executable
   python/
     lib/libpython3.14.so.1.0
-    lib/python3.14/         # stdlib, lib-dynload, site-packages
+    lib/python3.14/
     ...                    # rest of the distribution
 ```
 
-The helper's launcher sets `LD_LIBRARY_PATH` to `python/lib` and
-`PYLINK_PYTHON_HOME` to `python`, then executes `bin/myapp`. It handles paths
-containing spaces and preserves application arguments.
-
-To avoid a launcher, arrange `myapp` beside `python/` and add an application
-`build.rs` emitting `cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/python/lib`, or patch
-the release binary's RUNPATH with `patchelf`. A library crate's
-`rustc-link-arg` **does not propagate** to downstream executables; see
-[Cargo's build-script rules](https://doc.rust-lang.org/cargo/reference/build-scripts.html).
+- The launcher sets `LD_LIBRARY_PATH` and `PYLINK_PYTHON_HOME`, then runs the binary.
+- Without a launcher: place the executable beside `python/` and set its RUNPATH to
+  `$ORIGIN/python/lib`, using the application's `build.rs` or `patchelf`.
 
 ### macOS
 
@@ -294,17 +231,13 @@ myapp/
     ...
 ```
 
-The helper rewrites the executable's Python dependency from
-`@rpath/libpython3.14.dylib` to
-`@executable_path/python/lib/libpython3.14.dylib`, then restores its ad-hoc
-signature. Run the executable directly.
-
-For a GUI `.app`, put the executable in `MyApp.app/Contents/MacOS/` and the Python
-home in `MyApp.app/Contents/Resources/python/`. Rewrite the dependency to
-`@executable_path/../Resources/python/lib/libpython3.14.dylib` with
-`install_name_tool -change` before signing. Runtime discovery supports this
-layout. Apply your normal Developer ID signing/notarization process, including
-nested Python libraries/extensions, after all packaging changes.
+- The helper changes `@rpath/libpython3.14.dylib` to
+  `@executable_path/python/lib/libpython3.14.dylib` and restores the ad-hoc signature.
+- Run `myapp` directly.
+- For `.app` bundles: executable in `Contents/MacOS/`, Python in `Contents/Resources/python/`.
+- For that layout, use `install_name_tool -change` to set the dependency to
+  `@executable_path/../Resources/python/lib/libpython3.14.dylib`.
+- Apply Developer ID signing/notarization, including nested libraries/extensions, after packaging.
 
 ### Windows
 
@@ -313,8 +246,8 @@ myapp/
   myapp.exe
   python314.dll
   python3.dll
-  vcruntime140.dll          # copy all DLLs from Python's root here
-  vcruntime140_1.dll        # when present in that target's distribution
+  vcruntime140.dll
+  vcruntime140_1.dll        # when present
   python/
     Lib/
     DLLs/
@@ -322,19 +255,13 @@ myapp/
     ...
 ```
 
-Keep the full Python directory and copy its root `*.dll` files beside the Rust
-executable. The Windows loader needs those DLLs before `main()` runs. The helper
-does both, including runtime DLLs present in the selected archive. Run
-`myapp.exe` directly; no Python installation or PATH edits are needed.
+- Keep the full `python/` directory and copy **all its root DLLs** beside the executable.
+- The helper does both. Run `myapp.exe` directly; no PATH changes are needed.
 
 ### Static linking
 
-Static linking is intentionally not offered yet. The compact stripped archives
-contain no static libpython, and the pinned release has no Windows static
-builds. Supporting static embedding needs different distributions, additional
-native dependencies and toolchain handling; see
-[upstream embedding notes](https://github.com/astral-sh/python-build-standalone/blob/20260901/docs/running.rst).
-Selecting `PYLINK_LINK_MODE=static` returns an explicit error.
+- Not supported: the stripped distributions do not include static libpython.
+- `PYLINK_LINK_MODE=static` returns an error.
 
 ## Tests and maintenance
 
@@ -344,35 +271,18 @@ cargo test --doc
 python3 scripts/smoke.py
 ```
 
-The smoke test runs both hello-world examples, then exercises the
-[dependency-only test application](tests/fixtures/basic-app) and
-[PyO3 test application](tests/fixtures/pyo3-app). These CI fixtures contain
-assertions and repeated initialization calls to check that initialization is
-safe to repeat. They build with system-interpreter discovery pointing at a
-nonexistent file; import native modules including SSL, SQLite,
-ctypes and zlib; and attach another Rust thread. The driver rebuilds in a fresh
-target directory offline and runs both test application bundles after moving
-the cache and build directories out of reach. Bundles have spaces and Unicode characters in
-their paths and run with minimal environments. Unit/integration tests also
-exercise initialization errors, version/target selection, integrity, offline
-cache repair, and locking.
+- Runs both hello examples and the dedicated [test applications](tests/fixtures).
+- Checks initialization, native module imports, threading, cache integrity, and offline builds.
+- Tests builds with C/C++ compiler and system-Python discovery disabled.
+- Runs packaged binaries with the original cache/build directories hidden and a minimal environment.
+- Exercises bundle paths containing spaces and Unicode.
+- [GitHub Actions](.github/workflows/ci.yml) runs the suite on Windows, Linux, and macOS.
 
-[GitHub Actions](.github/workflows/ci.yml) runs Python 3.14 on Windows,
-Linux, and both macOS architectures. Consumer tests set C/C++ compiler settings
-to nonexistent executables and build from fresh target directories. They also
-assert that pylink has no Cargo dependencies. Runtime tests exercise the opaque
-initialization API directly; there are no copied configuration layouts to check.
-The workflow runs on push, pull request, and manual dispatch. Local verification
-on one OS does not substitute for those other runners.
-
-To update the pinned catalog deliberately:
+Update the pinned catalog:
 
 ```sh
 python3 scripts/update_manifest.py --release 20260901 \
   --versions 3.14.7
 ```
 
-The updater cross-checks GitHub asset digests against the release's SHA256SUMS
-before replacing `build_support/distributions.tsv`. Update the default, PyO3
-example/config, documentation and CI as needed when adding a new Python minor.
-Review upstream licenses and release notes when changing distributions.
+For a new Python minor, also update the default, PyO3 configs, examples, docs, and CI.
